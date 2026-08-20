@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Архив Юристов — Закрытый образовательный портал</title>
+  
+  <link rel="preconnect" href="https://googleapis.com">
+  <link rel="preconnect" href="https://gstatic.com" crossorigin>
+  <link href="https://googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root {
+      --bg-main: #0a0a0c;
+      --bg-card: #121216;
+      --bg-input: #18181f;
+      --gold: #c5a880;
+      --gold-hover: #dfbe91;
+      --text-main: #ffffff;
+      --text-muted: #8e8e93;
+      --border-gold: rgba(197, 168, 128, 0.15);
+    }
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: 'Montserrat', sans-serif;
+      margin: 0;
+      min-height: 100vh;
+    }
+    h1, h2, h3, .font-heading {
+      font-family: 'Playfair Display', serif;
+    }
+    .archive-root {
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+    .archive-root::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 50% 20%, rgba(197,168,128,0.05) 0%, transparent 50%), 
+                  linear-gradient(rgba(255,255,255,0.005) 1px, transparent 1px), 
+                  linear-gradient(90deg, rgba(255,255,255,0.005) 1px, transparent 1px);
+      background-size: 100% 100%, 50px 50px, 50px 50px;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .gold-glow { position: fixed; left: -10%; right: -10%; bottom: -10%; height: 60vh; background: radial-gradient(ellipse at center bottom, rgba(223,190,145,0.55) 0%, rgba(197,168,128,0.28) 30%, rgba(197,168,128,0.10) 55%, transparent 75%); filter: blur(10px); transform: translateY(35%) scaleY(0.6); pointer-events: none; z-index: 0; animation: goldGlowRise 9s ease-in-out infinite; }
+    @keyframes goldGlowRise { 0%, 100% {opacity:0;transform:translateY(35%) scaleY(0.6);} 30%{opacity:0.9;transform:translateY(0%) scaleY(1.05);} 65%{opacity:0.75;transform:translateY(-2%) scaleY(1);} }
+    .sparks { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .spark { position: absolute; left: var(--left); bottom: -5%; width: var(--size); height: var(--size); border-radius: 50%; background: radial-gradient(circle, #fffdf5 0%, #f4d79f 35%, var(--gold) 58%, rgba(197,168,128,0) 78%); box-shadow: 0 0 10px 3px rgba(223,190,145,0.82); opacity: 0; animation: sparkRise var(--duration) ease-in-out infinite; animation-delay: var(--delay); filter: brightness(1.25); }
+    @keyframes sparkRise { 0%{transform:translate(0,0) scale(0.5);opacity:0;} 8%{opacity:0.9;} 100%{transform:translate(var(--drift),-80vh) scale(0.3);opacity:0;} }
+    
+    .viewer-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; justify-content: center; align-items: center; padding: 20px; backdrop-filter: blur(8px); }
+    .viewer-content { background: var(--bg-card); border: 1px solid var(--border-gold); width: 100%; max-width: 1000px; height: 85vh; border-radius: 8px; display: flex; flex-direction: column; }
+    .viewer-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-b: 1px solid var(--border-gold); }
+    .viewer-body { flex-grow: 1; background: #000; position: relative; overflow: auto; }
+    .pdf-page-shell { position: relative; width: max-content; max-width: 100%; margin: 0 auto 18px; }
+    .pdf-page-shell canvas { display: block; max-width: 100%; height: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.55); }
+    .pdf-page-watermarks { position: absolute; inset: 0; pointer-events: none; user-select: none; z-index: 2; }
+    .pdf-page-watermark { position: absolute; color: rgba(223,190,145,0.42); font-size: 15px; font-weight: 700; letter-spacing: 0.035em; white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.72), 0 0 6px rgba(255,246,230,0.18); }
+    .pdf-page-watermark.top-left { top: 16px; left: 18px; transform: rotate(-14deg); }
+    .pdf-page-watermark.center { top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-24deg); color: rgba(223,190,145,0.30); }
+    .pdf-page-watermark.bottom-right { right: 18px; bottom: 16px; transform: rotate(-14deg); }
+    .viewer-body iframe { width: 100%; height: 100%; border: none; }
+    .viewer-body.blurred iframe { filter: blur(14px) brightness(0.3); transition: filter 0.2s; }
+    .viewer-watermark { position: absolute; inset: 0; pointer-events: none; z-index: 5; display: flex; flex-wrap: wrap; gap: 60px; align-content: center; justify-content: center; opacity: 0.10; color: var(--gold); font-size: 1.1rem; font-weight: 600; transform: rotate(-28deg); overflow: hidden; user-select: none; }
+    .viewer-shield { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--gold); background: rgba(10,10,12,0.85); backdrop-filter: blur(6px); }
+    .screenshot-warning { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,74,74,0.95); color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; z-index: 150; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 30px rgba(255,74,74,0.4); }
+    .favorite-toggle-btn { transition: transform 0.18s ease, color 0.18s ease, filter 0.18s ease; }
+    .favorite-toggle-btn.favorite-pop { animation: favoritePop 0.5s ease both; }
+    @keyframes favoritePop { 0% { transform: scale(1); } 35% { transform: scale(1.55) rotate(-8deg); filter: drop-shadow(0 0 10px rgba(223,190,145,0.9)); } 70% { transform: scale(0.88) rotate(5deg); } 100% { transform: scale(1); } }
+    .favorite-toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(15px); opacity: 0; z-index: 210; pointer-events: none; background: rgba(18,18,22,0.96); border: 1px solid rgba(197,168,128,0.65); color: #dfbe91; border-radius: 999px; padding: 10px 18px; font-size: 0.85rem; box-shadow: 0 8px 30px rgba(0,0,0,0.45); transition: opacity 0.2s ease, transform 0.2s ease; }
+    .favorite-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .cursor-trail-dot { position: fixed; width: var(--trail-size); height: var(--trail-size); left: 0; top: 0; border-radius: 50%; pointer-events: none; z-index: 180; background: radial-gradient(circle, rgba(255,246,230,0.95) 0%, rgba(223,190,145,0.72) 38%, rgba(197,168,128,0) 75%); box-shadow: 0 0 12px 3px rgba(223,190,145,0.45); transform: translate(-50%, -50%); animation: cursorTrailFade 0.75s ease-out forwards; }
+    @keyframes cursorTrailFade { from { opacity: 0.9; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -50%) scale(0.15); } }
+    body.login-transition::before { content: ''; position: fixed; inset: 0; z-index: 200; pointer-events: none; background: radial-gradient(circle at center, rgba(223,190,145,0.72), rgba(197,168,128,0.22) 28%, rgba(10,10,12,0.96) 72%); opacity: 0; animation: loginFlash 1.35s ease both; }
+    body.login-transition::after { content: 'Доступ подтверждён'; position: fixed; left: 50%; top: 50%; z-index: 201; transform: translate(-50%, -50%) scale(0.92); color: #fff6e6; font-family: 'Playfair Display', serif; font-size: clamp(1.2rem, 4vw, 2.2rem); letter-spacing: 0.08em; opacity: 0; text-shadow: 0 0 22px rgba(255,246,230,0.8); animation: loginText 1.35s ease both; pointer-events: none; }
+    @keyframes loginFlash { 0%, 58% { opacity: 0; transform: scale(0.86); } 72% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.18); } }
+    @keyframes loginText { 0%, 14% { opacity: 0; transform: translate(-50%, -50%) scale(0.92); } 30%, 60% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 78%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); } }
+    .login-spinner { width: 15px; height: 15px; border: 2px solid rgba(0,0,0,0.28); border-top-color: #000; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 640px) {
+      .viewer-modal { padding: 8px; align-items: stretch; }
+      .viewer-content { max-width: none; height: 94vh; border-radius: 6px; }
+      .viewer-header { padding: 10px 12px; gap: 8px; }
+      .viewer-header h3 { max-width: 62vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .viewer-body { min-height: 0; }
+      .pdf-page-watermark { font-size: 12px; }
+      .pdf-page-watermark.top-left { top: 10px; left: 10px; }
+      .pdf-page-watermark.bottom-right { right: 10px; bottom: 10px; }
+      .favorite-toast { bottom: 18px; max-width: calc(100vw - 32px); text-align: center; }
+    }
+    @media (hover: none), (pointer: coarse) {
+      .cursor-trail-dot { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      .cursor-trail-dot { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="archive-root">
+    <div class="gold-glow"></div>
+    <div class="sparks" id="sparks-container"></div>
+    <div id="screen-content" class="relative z-10 w-full flex-grow flex flex-col"></div>
+  </div>
+  <script>
+    const _supabase = supabase.createClient(
+      'https://gkpohmfnptrzrwczqtvq.supabase.co',
+      'sb_publishable_tYtjlSH6ysCEog6WprfOOA_sdQnX6ew'
+    );
+    const ADMIN_PASSWORD = 'ЧайныйТунецВ1П';
+    let currentScreen = 'auth';
+    let currentStudent = null;
+    let activeViewerLecture = null;
+    let isViewerBlurred = false;
+    let showFavorites = false;
+    const ADMIN_PAGE_SIZE = 8;
+    const adminPages = { keys: 1, subjects: 1, lectures: 1 };
+
+    function getAdminPage(items, listName) {
+      const source = Array.isArray(items) ? items : [];
+      const totalPages = Math.max(1, Math.ceil(source.length / ADMIN_PAGE_SIZE));
+      adminPages[listName] = Math.min(Math.max(1, adminPages[listName] || 1), totalPages);
+      const start = (adminPages[listName] - 1) * ADMIN_PAGE_SIZE;
+      return { rows: source.slice(start, start + ADMIN_PAGE_SIZE), page: adminPages[listName], totalPages };
+    }
+
+    function renderAdminPager(listName, page, totalPages) {
+      if (totalPages <= 1) return '';
+      return `<div class="flex items-center justify-between gap-3 mt-3 text-xs"><button type="button" class="admin-page-btn px-3 py-1.5 rounded border border-white/10 text-gray-300 hover:text-[#c5a880] disabled:opacity-30" data-list="${listName}" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>← Назад</button><span class="text-gray-500">Страница ${page} из ${totalPages}</span><button type="button" class="admin-page-btn px-3 py-1.5 rounded border border-white/10 text-gray-300 hover:text-[#c5a880] disabled:opacity-30" data-list="${listName}" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Вперёд →</button></div>`;
+    }
+
+    function getFavoriteStorageKey() {
+      return `archive_favorites_${currentStudent?.id || currentStudent?.key_value || 'guest'}`;
+    }
+
+    function getFavoriteIds() {
+      try {
+        return JSON.parse(localStorage.getItem(getFavoriteStorageKey()) || '[]').map(String);
+      } catch { return []; }
+    }
+
+    function showFavoriteToast(message) {
+      let toast = document.getElementById('favorite-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'favorite-toast';
+        toast.className = 'favorite-toast';
+        document.body.appendChild(toast);
+      }
+      toast.textContent = message;
+      toast.classList.remove('visible');
+      void toast.offsetWidth;
+      toast.classList.add('visible');
+      clearTimeout(window.favoriteToastTimer);
+      window.favoriteToastTimer = setTimeout(() => toast.classList.remove('visible'), 1800);
+    }
+
+    function toggleFavoriteLecture(lectureId) {
+      const favorites = getFavoriteIds();
+      const id = String(lectureId);
+      const added = !favorites.includes(id);
+      const next = added ? [...favorites, id] : favorites.filter(item => item !== id);
+      localStorage.setItem(getFavoriteStorageKey(), JSON.stringify(next));
+      showFavoriteToast(added ? '♥ Добавлено в избранное' : 'Избранное убрано');
+      return { added, next };
+    }
+
+    async function transitionToScreen(screen, student = null) {
+      document.body.classList.add('login-transition');
+      await new Promise(resolve => setTimeout(resolve, 1220));
+      currentScreen = screen;
+      currentStudent = student;
+      await renderApp();
+      document.body.classList.remove('login-transition');
+    }
+
+    const sparksContainer = document.getElementById('sparks-container');
+    const sparkSettings = [
+      { left: 4, size: 3, duration: 13, delay: 0, drift: 18 }, { left: 12, size: 2, duration: 10, delay: -3, drift: 15 },
+      { left: 20, size: 4, duration: 11, delay: -2, drift: 22 }, { left: 29, size: 2, duration: 14, delay: -8, drift: 19 },
+      { left: 37, size: 3, duration: 12, delay: -6, drift: 16 }, { left: 46, size: 2, duration: 9, delay: -4, drift: 25 },
+      { left: 55, size: 4, duration: 10, delay: -7, drift: 24 }, { left: 63, size: 2, duration: 15, delay: -11, drift: 14 },
+      { left: 71, size: 3, duration: 13, delay: -10, drift: 20 }, { left: 79, size: 2, duration: 12, delay: -1, drift: 18 },
+      { left: 87, size: 4, duration: 16, delay: -8, drift: 18 }, { left: 94, size: 2, duration: 11, delay: -5, drift: 22 },
+      { left: 16, size: 2, duration: 17, delay: -13, drift: 16 }, { left: 51, size: 3, duration: 14, delay: -15, drift: 20 },
+      { left: 68, size: 2, duration: 10, delay: -17, drift: 13 }, { left: 90, size: 3, duration: 15, delay: -19, drift: 21 }
+    ];
+    sparkSettings.forEach(s => {
+      const el = document.createElement('span');
+      el.className = 'spark';
+      el.style.setProperty('--left', `${s.left}%`);
+      el.style.setProperty('--size', `${s.size}px`);
+      el.style.setProperty('--duration', `${s.duration}s`);
+      el.style.setProperty('--delay', `${s.delay}s`);
+      el.style.setProperty('--drift', `${s.drift}px`);
+            sparksContainer.appendChild(el);
+    });
+
+    const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (finePointer) {
+      let lastTrailTime = 0;
+      document.addEventListener('pointermove', (event) => {
+        const now = performance.now();
+        if (now - lastTrailTime < 28) return;
+        lastTrailTime = now;
+        const dot = document.createElement('span');
+        dot.className = 'cursor-trail-dot';
+        dot.style.left = `${event.clientX}px`;
+        dot.style.top = `${event.clientY}px`;
+        dot.style.setProperty('--trail-size', `${3 + Math.random() * 5}px`);
+        document.body.appendChild(dot);
+        setTimeout(() => dot.remove(), 780);
+      }, { passive: true });
+    }
+
+    async function fetchUserIP() {
+      try {
+        const r = await fetch('https://ipify.org');
+        const j = await r.json();
+        return j.ip || '';
+      } catch { return ''; }
+    }
+
+    async function renderApp() {
+      const container = document.getElementById('screen-content');
+      container.innerHTML = '';
+
+      if (currentScreen === 'auth') {
+        container.innerHTML = `
+          <div class="flex justify-center items-center min-h-screen flex-grow px-4 py-20">
+            <div class="text-center p-4 max-w-[420px] w-full">
+              <div class="w-[120px] h-[120px] mx-auto mb-6 flex items-center justify-center rounded-full border border-[rgba(197,168,128,0.15)] bg-[radial-gradient(circle,rgba(197,168,128,0.12)_0%,transparent_70%)] text-[#c5a880] drop-shadow-[0_0_20px_rgba(197,168,128,0.35)]">
+                <i data-lucide="scale" class="w-16 h-16 stroke-[1.1]"></i>
+              </div>
+              <h1 class="text-4xl font-bold tracking-wider mb-1 text-white uppercase">Архив Юристов</h1>
+              <div class="text-[#c5a880] mb-8 italic tracking-wider text-sm">Закрытый образовательный портал</div>
+              <form id="auth-form" class="bg-[#121216] border border-[rgba(197,168,128,0.15)] p-10 rounded-xl shadow-2xl relative">
+                <div class="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-transparent via-[#c5a880] to-transparent"></div>
+                <div class="mb-6 text-left">
+                  <label class="block text-[10px] text-[#c5a880] mb-2 tracking-[2px] font-semibold uppercase">ВВЕДИТЕ КЛЮЧ ДОСТУПА</label>
+                  <input type="text" id="auth-key" class="w-full p-3.5 bg-[#18181f] border border-white/10 rounded-md text-white text-base focus:outline-none focus:border-[#c5a880] focus:shadow-[0_0_12px_rgba(197,168,128,0.2)]" placeholder="Ключ доступа (например, LAW-2026)..." autocomplete="off" required>
+                  <div id="auth-error" class="text-red-500 text-xs mt-2 font-medium hidden"></div>
+                </div>
+                <button id="auth-submit" type="submit" class="w-full p-4 bg-[#c5a880] hover:bg-[#dfbe91] transition duration-300 rounded-md text-black font-semibold tracking-wide uppercase flex items-center justify-center gap-2">Получить доступ</button>
+              </form>
+            </div>
+          </div>
+        `;
+        
+        document.getElementById('auth-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const keyInput = document.getElementById('auth-key').value.trim();
+          const errDiv = document.getElementById('auth-error');
+          const submitButton = document.getElementById('auth-submit');
+          errDiv.classList.add('hidden');
+          submitButton.disabled = true;
+          submitButton.classList.add('opacity-70');
+          submitButton.innerHTML = '<span class="login-spinner"></span> Проверка доступа…';
+
+          if (keyInput === ADMIN_PASSWORD) {
+            await transitionToScreen('admin');
+            return;
+          }
+
+          try {
+            const { data: keys, error } = await _supabase.from('access_keys').select('*').eq('key_value', keyInput);
+            if (error) throw error;
+
+            if (keys && keys.length > 0) {
+              const k = keys[0];
+              if (k.expires_at && new Date() > new Date(k.expires_at)) {
+                errDiv.innerText = 'Срок действия этого ключа истёк. Обратитесь к администратору.';
+                errDiv.classList.remove('hidden');
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-70');
+                submitButton.innerHTML = 'Получить доступ';
+                return;
+              }
+              
+              const ip = await fetchUserIP();
+              if (k.bound_ip && k.bound_ip !== ip) {
+                errDiv.innerText = 'Этот ключ привязан к другому устройству. Вход с этого IP невозможен.';
+                errDiv.classList.remove('hidden');
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-70');
+                submitButton.innerHTML = 'Получить доступ';
+                return;
+              }
+
+              if (!k.bound_ip && ip) {
+                await _supabase.from('access_keys').update({ bound_ip: ip }).eq('id', k.id);
+                k.bound_ip = ip;
+              }
+
+              await transitionToScreen('student', k);
+            } else {
+              errDiv.innerText = 'Неверный ключ доступа.';
+              errDiv.classList.remove('hidden');
+              submitButton.disabled = false;
+              submitButton.classList.remove('opacity-70');
+              submitButton.innerHTML = 'Получить доступ';
+            }
+          } catch (err) {
+            errDiv.innerText = 'Ошибка соединения с базой данных.';
+            errDiv.classList.remove('hidden');
+            submitButton.disabled = false;
+            submitButton.classList.remove('opacity-70');
+            submitButton.innerHTML = 'Получить доступ';
+          }
+        });
+      }
+      else if (currentScreen === 'student') {
+        const { data: subjects } = await _supabase.from('subjects').select('*').order('name');
+        const { data: lectures } = await _supabase.from('lectures').select('*').order('created_at', { ascending: false });
+        const studentExpiresAt = currentStudent?.expires_at ? new Date(currentStudent.expires_at) : null;
+        const studentActive = currentStudent?.status !== 'Не активен' && (!studentExpiresAt || studentExpiresAt >= new Date());
+        const studentStatusLabel = studentActive ? '✓ Подписка активна' : '✕ Подписка неактивна';
+        const studentStatusClass = studentActive ? 'text-green-400' : 'text-red-400';
+        
+        container.innerHTML = `
+          <div class="max-w-[1300px] w-full mx-auto p-6 flex-grow flex flex-col">
+            <header class="flex justify-between items-center border-b border-[rgba(197,168,128,0.15)] pb-5 mb-8">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 flex items-center justify-center rounded-full border border-[rgba(197,168,128,0.15)] text-[#c5a880] shadow-[0_0_8px_rgba(197,168,128,0.3)]">
+                  <i data-lucide="scale" class="w-6 h-6"></i>
+                </div>
+                <h2 class="text-2xl font-bold tracking-wide">Архив Юристов</h2>
+              </div>
+              <div class="flex items-center gap-3">
+                <button id="favorites-btn" class="bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-4 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition flex items-center gap-2"><span class="text-lg leading-none">♥</span> Избранное</button>
+                <button id="logout-btn" class="bg-transparent border border-white/20 text-white py-2 px-5 text-sm rounded-md hover:bg-white/5 hover:border-white transition flex items-center gap-2"><i data-lucide="log-out" class="w-4 h-4"></i> Выйти</button>
+              </div>
+            </header>
+
+            <div class="flex justify-between items-center bg-[#121216] border border-[rgba(197,168,128,0.15)] rounded-lg p-5 mb-6 shadow-lg">
+              <div class="flex items-center gap-4">
+                <div class="w-11 h-11 rounded-full flex items-center justify-center border border-[rgba(197,168,128,0.15)] text-[#c5a880] bg-[radial-gradient(circle,rgba(197,168,128,0.12)_0%,transparent_70%)]">
+                  <i data-lucide="user" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <div class="text-base font-semibold text-white">${currentStudent?.student_name}</div>
+                  <div class="text-xs ${studentStatusClass} mt-0.5">${studentStatusLabel}</div>
+                </div>
+              </div>
+              <div><span class="bg-white/5 px-2 py-1 rounded text-sm font-mono border border-white/10">${currentStudent?.key_value}</span></div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-8">
+              <div>
+                <h3 class="text-xl font-bold text-[#c5a880] mb-4 pb-2 border-b border-[rgba(197,168,128,0.15)] flex items-center gap-2.5"><i data-lucide="book-open" class="w-5 h-5"></i> Дисциплины</h3>
+                <div class="flex flex-col gap-3">
+                  ${subjects?.map(s => `
+                    <div class="bg-[#121216] border border-white/5 p-4 rounded-lg text-left text-white cursor-pointer hover:border-[#c5a880] transition flex justify-between items-center lecture-subject-select" data-subject="${s.name}">
+                      <span>${s.name}</span> <span class="text-[#c5a880]/50">→</span>
+                    </div>
+                  `).join('') || '<div class="text-gray-500 italic">Предметов пока нет</div>'}
+                </div>
+              </div>
+
+              <div>
+                <h3 class="text-xl font-bold text-[#c5a880] mb-4 pb-2 border-b border-[rgba(197,168,128,0.15)] flex items-center gap-2.5"><i data-lucide="file-text" class="w-5 h-5"></i> Материалы курса</h3>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" id="lectures-container">
+                  <div class="text-gray-400 italic">Выберите предмет слева для просмотра лекций и презентаций.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+          currentScreen = 'auth'; currentStudent = null; renderApp();
+        });
+
+        document.getElementById('favorites-btn').addEventListener('click', () => {
+          showFavorites = !showFavorites;
+          document.querySelectorAll('.lecture-subject-select').forEach(item => item.classList.toggle('border-[#c5a880]', showFavorites));
+          if (showFavorites) {
+            const favoriteLectures = lectures.filter(l => getFavoriteIds().includes(String(l.id)));
+            const targetContainer = document.getElementById('lectures-container');
+            targetContainer.innerHTML = favoriteLectures.length ? `
+              <div class="lg:col-span-2">
+                <h4 class="text-md font-semibold text-[#c5a880] mb-3 flex items-center gap-1.5"><span class="text-lg">♥</span> Избранные материалы</h4>
+                ${favoriteLectures.map(l => `
+                  <div class="bg-[#121216] border border-[#c5a880] hover:border-[#dfbe91] p-4 rounded-lg mb-3 flex justify-between items-center transition">
+                    <div class="open-doc-btn cursor-pointer flex-grow" data-id="${l.id}" data-title="${l.title}" data-link="${l.link}"><div class="font-medium text-sm text-white">${l.title}</div><div class="text-xs text-gray-500 mt-1">${l.subject_name} • 📅 ${l.date || ''}</div></div>
+                    <button type="button" class="favorite-toggle-btn text-[#c5a880] text-2xl ml-3" data-id="${l.id}" title="Убрать из избранного">♥</button>
+                  </div>
+                `).join('')}
+              </div>` : '<div class="col-span-2 text-gray-500 italic">В избранном пока нет материалов.</div>';
+            bindLectureActions();
+          } else {
+            renderApp();
+          }
+        });
+
+        function bindLectureActions() {
+          document.querySelectorAll('.open-doc-btn').forEach(card => {
+            card.addEventListener('click', () => {
+              activeViewerLecture = { id: card.getAttribute('data-id'), title: card.getAttribute('data-title'), link: card.getAttribute('data-link') };
+              renderViewerModal();
+            });
+          });
+          document.querySelectorAll('.favorite-toggle-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+              event.stopPropagation();
+              const result = toggleFavoriteLecture(button.getAttribute('data-id'));
+              button.classList.toggle('text-[#c5a880]', result.added);
+              button.classList.toggle('text-gray-600', !result.added);
+              button.classList.remove('favorite-pop');
+              void button.offsetWidth;
+              button.classList.add('favorite-pop');
+              if (showFavorites) { showFavorites = false; document.getElementById('favorites-btn').click(); }
+            });
+          });
+        }
+
+        document.querySelectorAll('.lecture-subject-select').forEach(btn => {
+          btn.addEventListener('click', () => {
+            showFavorites = false;
+            const subName = btn.getAttribute('data-subject');
+            const targetContainer = document.getElementById('lectures-container');
+            const filtered = lectures.filter(l => l.subject_name === subName);
+            if(filtered.length === 0) {
+              targetContainer.innerHTML = `<div class="col-span-2 text-gray-500 italic">В этом предмете пока нет материалов.</div>`;
+              return;
+            }
+            const conspects = filtered.filter(l => l.material_type === 'Конспект');
+            const presentations = filtered.filter(l => l.material_type === 'Презентация');
+            const renderLecture = l => {
+              const isFavorite = getFavoriteIds().includes(String(l.id));
+              return `<div class="bg-[#121216] border border-white/5 hover:border-[#c5a880] p-4 rounded-lg mb-3 flex justify-between items-center transition">
+                <div class="open-doc-btn cursor-pointer flex-grow" data-id="${l.id}" data-title="${l.title}" data-link="${l.link}"><div class="font-medium text-sm text-white">${l.title}</div><div class="text-xs text-gray-500 mt-1">📅 ${l.date || ''}</div></div>
+                <button type="button" class="favorite-toggle-btn ${isFavorite ? 'text-[#c5a880]' : 'text-gray-600'} text-2xl ml-3" data-id="${l.id}" title="${isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}">♥</button>
+              </div>`;
+            };
+            targetContainer.innerHTML = `
+              <div><h4 class="text-md font-semibold text-[#c5a880] mb-3 flex items-center gap-1.5">📝 Конспекты</h4>${conspects.map(renderLecture).join('') || '<div class="text-gray-500 text-xs italic">Конспектов нет</div>'}</div>
+              <div><h4 class="text-md font-semibold text-[#c5a880] mb-3 flex items-center gap-1.5">📊 Презентации</h4>${presentations.map(renderLecture).join('') || '<div class="text-gray-500 text-xs italic">Презентаций нет</div>'}</div>
+            `;
+            bindLectureActions();
+          });
+        });
+      }
+
+      else if (currentScreen === 'admin') {
+        const { data: keys } = await _supabase.from('access_keys').select('*').order('created_at', { ascending: false });
+        const { data: subjects } = await _supabase.from('subjects').select('*').order('name');
+        const { data: adminLectures } = await _supabase.from('lectures').select('*').order('created_at', { ascending: false });
+        const isKeyActive = k => k.status !== 'Не активен' && (!k.expires_at || new Date(k.expires_at) >= new Date());
+        const keyPage = getAdminPage(keys, 'keys');
+        const subjectPage = getAdminPage(subjects, 'subjects');
+        const lecturePage = getAdminPage(adminLectures, 'lectures');
+
+        container.innerHTML = `
+          <div class="max-w-[1300px] w-full mx-auto p-6 flex-grow flex flex-col">
+            <header class="flex justify-between items-center border-b border-[rgba(197,168,128,0.15)] pb-5 mb-6">
+              <div class="flex items-center gap-4"><div class="w-12 h-12 flex items-center justify-center rounded-full border border-[rgba(197,168,128,0.15)] text-[#c5a880]"><i data-lucide="scale" class="w-6 h-6"></i></div><h2 class="text-2xl font-bold tracking-wide">Управление Архивом</h2></div>
+              <button id="admin-logout-btn" class="bg-transparent border border-white/20 text-white py-2 px-5 text-sm rounded-md hover:bg-white/5 transition flex items-center gap-2"><i data-lucide="log-out" class="w-4 h-4"></i> Выйти</button>
+            </header>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div class="bg-[#121216] border border-[rgba(197,168,128,0.15)] rounded-lg p-6 shadow-xl">
+                <h3 class="text-lg font-bold text-[#c5a880] mb-4 pb-2 border-b border-white/5 flex items-center gap-2"><i data-lucide="key-round" class="w-4 h-4"></i> Выдать новый доступ</h3>
+                <form id="create-key-form" class="space-y-4">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label class="block text-xs text-[#c5a880] mb-1.5 uppercase font-medium">Студент</label><input type="text" id="new-student-name" class="w-full p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="Иванов Иван" required></div>
+                    <div><label class="block text-xs text-[#c5a880] mb-1.5 uppercase font-medium">Срок</label><select id="new-student-duration" class="w-full p-2.5 bg-[#18181f] border border-white/10 rounded text-white"><option value="month">1 месяц</option><option value="year">1 год</option></select></div>
+                  </div>
+                  <button type="submit" class="w-full p-3 bg-[#c5a880] text-black font-semibold rounded hover:bg-[#dfbe91] transition uppercase tracking-wider text-sm">Создать профиль</button>
+                </form>
+                <h3 class="text-lg font-bold text-[#c5a880] mt-8 mb-4 pb-2 border-b border-white/5">Выданные коды</h3>
+                <div class="overflow-x-auto max-h-[220px] overflow-y-auto"><table class="w-full text-sm text-left">
+                  <thead><tr class="text-[#c5a880] border-b border-white/5 text-xs uppercase"><th class="p-2">Студент</th><th class="p-2">Код</th><th class="p-2">До</th><th class="p-2">Статус</th><th class="p-2 text-center">Удалить</th></tr></thead>
+                  <tbody>${keyPage.rows.map(k => { const active = isKeyActive(k); const statusText = active ? 'Активен' : 'Не активен'; const statusClass = active ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'; return `<tr class="border-b border-white/5"><td class="p-2 font-semibold">${k.student_name}</td><td class="p-2"><span class="bg-white/5 px-2 py-0.5 rounded font-mono">${k.key_value}</span></td><td class="p-2 text-xs ${active ? 'text-green-400' : 'text-red-400'}">${k.expires_at ? new Date(k.expires_at).toLocaleDateString('ru-RU') : '—'}</td><td class="p-2"><span class="${statusClass} px-2 py-1 rounded text-xs font-semibold">${statusText}</span></td><td class="p-2 text-center"><button type="button" class="delete-key-btn text-red-400 hover:text-red-300 text-xl font-bold leading-none" data-id="${k.id}" data-student="${k.student_name}" title="Удалить профиль" aria-label="Удалить профиль">×</button></td></tr>`; }).join('') || '<tr><td colspan="5" class="p-2 text-gray-500 italic">Кодов нет</td></tr>'}</tbody>
+                </table></div>${renderAdminPager('keys', keyPage.page, keyPage.totalPages)}
+              </div>
+              <div class="bg-[#121216] border border-[rgba(197,168,128,0.15)] rounded-lg p-6 shadow-xl space-y-6">
+                <div>
+                  <h3 class="text-lg font-bold text-[#c5a880] mb-3 pb-2 border-b border-white/5">Новая дисциплина</h3>
+                  <form id="create-subject-form" class="flex gap-3"><input type="text" id="new-subject-name" class="flex-grow p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="Название предмета" required><button type="submit" class="px-5 bg-[#c5a880] text-black font-semibold rounded hover:bg-[#dfbe91] transition">Добавить</button></form>
+                  <div class="mt-4 space-y-2">${subjectPage.rows.map(s => `<div class="flex items-center gap-2 bg-[#18181f] border border-white/5 rounded p-2"><input id="subject-name-${s.id}" value="${s.name}" class="subject-name-input flex-grow bg-transparent text-white text-sm outline-none"><button type="button" class="save-subject-btn text-[#c5a880] hover:text-white text-xs" data-id="${s.id}">Сохранить</button><button type="button" class="delete-subject-btn text-red-400 hover:text-red-300 text-lg leading-none" data-id="${s.id}" data-name="${s.name}" title="Удалить предмет">×</button></div>`).join('') || '<div class="text-gray-500 text-xs italic mt-3">Предметов пока нет</div>'}</div>${renderAdminPager('subjects', subjectPage.page, subjectPage.totalPages)}
+                </div>
+                <div>
+                  <h3 class="text-lg font-bold text-[#c5a880] mb-3 pb-2 border-b border-white/5">Опубликовать материал</h3>
+                  <form id="publish-lecture-form" class="space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div><select id="lecture-subject-select" class="w-full p-2.5 bg-[#18181f] border border-white/10 rounded text-white">${subjects?.map(s => `<option value="${s.name}">${s.name}</option>`).join('') || '<option value="">Нет предметов</option>'}</select></div>
+                      <div><select id="lecture-type-select" class="w-full p-2.5 bg-[#18181f] border border-white/10 rounded text-white"><option value="Конспект">📝 Конспект</option><option value="Презентация">📊 Презентация</option></select></div>
+                    </div>
+                    <input type="text" id="lecture-title" class="w-full p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="Тема лекции" required>
+                    <input type="url" id="lecture-link" class="w-full p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="Ссылка на PDF/Яндекс.Диск" required>
+                    <button type="submit" class="w-full p-3 bg-[#c5a880] text-black font-semibold rounded hover:bg-[#dfbe91] transition uppercase tracking-wider text-sm">Опубликовать</button>
+                  </form>
+                  <h3 class="text-lg font-bold text-[#c5a880] mt-6 mb-3 pb-2 border-b border-white/5">Опубликованные материалы</h3>
+                  <div class="max-h-[220px] overflow-y-auto space-y-2">${lecturePage.rows.map(l => `<div class="flex items-center gap-2 bg-[#18181f] border border-white/5 rounded p-2"><div class="flex-grow min-w-0"><div class="text-white text-sm truncate">${l.title}</div><div class="text-gray-500 text-xs truncate">${l.subject_name} • ${l.material_type}</div></div><button type="button" class="delete-lecture-btn text-red-400 hover:text-red-300 text-lg leading-none" data-id="${l.id}" data-title="${l.title}" title="Удалить материал">×</button></div>`).join('') || '<div class="text-gray-500 text-xs italic">Материалов пока нет</div>'}</div>${renderAdminPager('lectures', lecturePage.page, lecturePage.totalPages)}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('admin-logout-btn').addEventListener('click', () => { currentScreen = 'auth'; renderApp(); });
+
+        document.querySelectorAll('.admin-page-btn').forEach(button => {
+          button.addEventListener('click', () => {
+            const listName = button.getAttribute('data-list');
+            const nextPage = Number(button.getAttribute('data-page'));
+            if (!listName || !Number.isFinite(nextPage) || nextPage < 1) return;
+            adminPages[listName] = nextPage;
+            renderApp();
+          });
+        });
+
+        document.querySelectorAll('.save-subject-btn').forEach(button => {
+          button.addEventListener('click', async () => {
+            const subjectId = button.getAttribute('data-id');
+            const input = document.getElementById(`subject-name-${subjectId}`);
+            const newName = input.value.trim();
+            const oldSubject = subjects?.find(s => String(s.id) === String(subjectId));
+            if (!newName || !oldSubject || newName === oldSubject.name) return;
+            const { error: lecturesError } = await _supabase.from('lectures').update({ subject_name: newName }).eq('subject_name', oldSubject.name);
+            if (lecturesError) { alert(`Не удалось обновить предмет у материалов.\\n\\n${lecturesError.message}`); return; }
+            const { error: subjectError } = await _supabase.from('subjects').update({ name: newName }).eq('id', subjectId);
+            if (subjectError) { alert(`Не удалось сохранить название предмета.\\n\\n${subjectError.message}`); return; }
+            renderApp();
+          });
+        });
+
+        document.querySelectorAll('.delete-subject-btn').forEach(button => {
+          button.addEventListener('click', async () => {
+            const subjectId = button.getAttribute('data-id');
+            const subjectName = button.getAttribute('data-name') || 'этот предмет';
+            if (!confirm(`Удалить предмет «${subjectName}»? Материалы останутся в базе, но будут без прежней привязки.`)) return;
+            const { error: subjectError } = await _supabase.from('subjects').delete().eq('id', subjectId);
+            if (subjectError) { alert(`Не удалось удалить предмет.\\n\\n${subjectError.message}`); return; }
+            renderApp();
+          });
+        });
+
+        document.querySelectorAll('.delete-lecture-btn').forEach(button => {
+          button.addEventListener('click', async () => {
+            const lectureId = button.getAttribute('data-id');
+            const lectureTitle = button.getAttribute('data-title') || 'этот материал';
+            if (!confirm(`Удалить материал «${lectureTitle}»?`)) return;
+            const { error: lectureError } = await _supabase.from('lectures').delete().eq('id', lectureId);
+            if (lectureError) { alert(`Не удалось удалить материал.\\n\\n${lectureError.message}`); return; }
+            renderApp();
+          });
+        });
+
+        document.querySelectorAll('.delete-key-btn').forEach(button => {
+          button.addEventListener('click', async () => {
+            const keyId = button.getAttribute('data-id');
+            const studentName = button.getAttribute('data-student') || 'этот профиль';
+            if (!confirm(`Удалить профиль «${studentName}» и его код?`)) return;
+
+            const { error: deleteError } = await _supabase.from('access_keys').delete().eq('id', keyId);
+            if (deleteError) {
+              console.error('Ошибка удаления профиля:', deleteError);
+              alert(`Не удалось удалить профиль.\\n\\n${deleteError.message || 'Проверьте права доступа к таблице access_keys.'}`);
+              return;
+            }
+            renderApp();
+          });
+        });
+        document.getElementById('create-key-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const name = document.getElementById('new-student-name').value.trim();
+          const dur = document.getElementById('new-student-duration').value;
+          const generatedKey = 'LAW-' + Math.floor(1000 + Math.random() * 9000);
+          const expDate = new Date();
+          if (dur === 'month') expDate.setMonth(expDate.getMonth() + 1);
+          if (dur === 'year') expDate.setFullYear(expDate.getFullYear() + 1);
+
+          const { error: insertError } = await _supabase.from('access_keys').insert([{ student_name: name, key_value: generatedKey, status: 'Активен', expires_at: expDate.toISOString().slice(0, 10) }]);
+          if (insertError) {
+            console.error('Ошибка создания кода:', insertError);
+            alert(`Не удалось сохранить код в базе данных.\\n\\n${insertError.message || 'Проверьте права доступа и структуру таблицы access_keys.'}`);
+            return;
+          }
+          alert(`Создан!\\nКод доступа: ${generatedKey}`);
+          renderApp();
+        });
+
+        document.getElementById('create-subject-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const sName = document.getElementById('new-subject-name').value.trim();
+          await _supabase.from('subjects').insert([{ name: sName }]);
+          renderApp();
+        });
+
+        document.getElementById('publish-lecture-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          await _supabase.from('lectures').insert([{ subject_name: document.getElementById('lecture-subject-select').value, material_type: document.getElementById('lecture-type-select').value, date: new Date().toLocaleDateString('ru-RU'), title: document.getElementById('lecture-title').value.trim(), link: document.getElementById('lecture-link').value.trim() }]);
+          alert('Опубликовано!');
+          renderApp();
+        });
+      }
+      lucide.createIcons();
+    }
+
+    function normalizeDocumentLink(link) {
+      try {
+        const url = new URL(link, window.location.href);
+        if (url.hostname.endsWith('.supabase.co') && url.pathname.includes('/storage/v1/object/')) {
+          url.searchParams.set('download', '0');
+        }
+        return url.toString();
+      } catch { return link; }
+    }
+
+    function getWatermarkText() {
+      return currentStudent?.student_name || 'Администратор';
+    }
+
+    function createPageWatermark(text) {
+      const layer = document.createElement('div');
+      layer.className = 'pdf-page-watermarks';
+      [['top-left', text], ['center', text], ['bottom-right', text]].forEach(([position, value]) => {
+        const watermark = document.createElement('div');
+        watermark.className = `pdf-page-watermark ${position}`;
+        watermark.textContent = value;
+        layer.appendChild(watermark);
+      });
+      return layer;
+    }
+
+    async function renderPdfInline(pdfUrl) {
+      const area = document.getElementById('pdf-pages');
+      if (!area) return;
+      if (!window.pdfjsLib) {
+        area.innerHTML = '<div class="p-6 text-red-300">Не удалось загрузить просмотрщик PDF. Используйте «Открыть отдельно».</div>';
+        return;
+      }
+      try {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        const pdf = await window.pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise;
+        const status = document.createElement('div');
+        status.className = 'text-center text-xs text-gray-400 pb-3';
+        status.textContent = `Страница 1 из ${pdf.numPages} загружается…`;
+        area.innerHTML = '';
+        area.appendChild(status);
+        const watermarkText = getWatermarkText();
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const page = await pdf.getPage(pageNumber);
+          const rawViewport = page.getViewport({ scale: 1 });
+          const availableWidth = Math.max(320, Math.min(area.clientWidth - 32, 900));
+          const scale = Math.min(1.35, availableWidth / rawViewport.width);
+          const viewport = page.getViewport({ scale });
+          const pageShell = document.createElement('div');
+          pageShell.className = 'pdf-page-shell';
+          const canvas = document.createElement('canvas');
+          canvas.className = 'block mx-auto shadow-xl max-w-full';
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          pageShell.appendChild(canvas);
+          pageShell.appendChild(createPageWatermark(watermarkText));
+          area.appendChild(pageShell);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          status.textContent = `Страница ${pageNumber} из ${pdf.numPages}`;
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+      } catch (error) {
+        console.error('Ошибка просмотра PDF:', error);
+        area.innerHTML = '<div class="p-6 text-red-300">Этот файл нельзя показать внутри сайта. Проверьте, что ссылка публичная и ведёт на PDF, либо используйте «Открыть отдельно».</div>';
+      }
+    }
+
+    function openDocumentSeparately(url, title, watermarkText, isPdf) {
+      const tab = window.open('', '_blank');
+      if (!tab) { alert('Браузер заблокировал новую вкладку. Разрешите всплывающие окна для этого файла.'); return; }
+      const safeUrl = JSON.stringify(url);
+      const safeTitle = JSON.stringify(title || 'Документ');
+      const safeWatermark = JSON.stringify(watermarkText);
+      if (!isPdf) {
+        const page = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title || 'Документ'}</title><style>body{margin:0;background:#111;color:#ddd;font-family:Arial,sans-serif}.bar{position:sticky;top:0;background:#111;padding:12px 16px;z-index:5}.wrap{height:calc(100vh - 48px);position:relative}.wrap iframe{width:100%;height:100%;border:0}.marks{position:absolute;inset:0;pointer-events:none}.mark{position:absolute;color:rgba(223,190,145,.42);font-size:15px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.72),0 0 6px rgba(255,246,230,.18);white-space:nowrap}.mark.tl{top:16px;left:18px;transform:rotate(-14deg)}.mark.cc{top:50%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);color:rgba(223,190,145,.30)}.mark.br{right:18px;bottom:16px;transform:rotate(-14deg)}.hint{padding:20px;color:#fca5a5}</style></head><body><div class="bar"><strong>${title || 'Документ'}</strong></div><div class="wrap"><iframe src=${safeUrl} title=${safeTitle} allowfullscreen></iframe><div class="marks"><div class="mark tl">${watermarkText}</div><div class="mark cc">${watermarkText}</div><div class="mark br">${watermarkText}</div></div></div></body></html>`;
+        tab.document.open();
+        tab.document.write(page);
+        tab.document.close();
+        return;
+      }
+      const closeScript = '</scr' + 'ipt>';
+      const page = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title || 'Документ'}</title><style>body{margin:0;background:#202020;color:#ddd;font-family:Arial,sans-serif}.bar{position:sticky;top:0;background:#111;padding:12px 16px;z-index:5}.pages{padding:16px}.shell{position:relative;width:max-content;max-width:100%;margin:0 auto 18px}.shell canvas{display:block;max-width:100%;height:auto;box-shadow:0 4px 20px #000}.marks{position:absolute;inset:0;pointer-events:none}.mark{position:absolute;color:rgba(223,190,145,.42);font-size:15px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.72),0 0 6px rgba(255,246,230,.18);white-space:nowrap}.mark.tl{top:16px;left:18px;transform:rotate(-14deg)}.mark.cc{top:50%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);color:rgba(223,190,145,.30)}.mark.br{right:18px;bottom:16px;transform:rotate(-14deg)}.error{padding:24px;color:#fca5a5}</style></head><body><div class="bar"><strong>${title || 'Документ'}</strong><span id="status" style="margin-left:16px;color:#aaa"></span></div><div id="pages" class="pages"></div><script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js">${closeScript}<script>(async()=>{const url=${safeUrl};const mark=${safeWatermark};const pdfjsLib=window.pdfjsLib;pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';try{const pdf=await pdfjsLib.getDocument({url,withCredentials:false}).promise;const pages=document.getElementById('pages');const status=document.getElementById('status');for(let n=1;n<=pdf.numPages;n++){const p=await pdf.getPage(n);const v=p.getViewport({scale:1.35});const shell=document.createElement('div');shell.className='shell';const c=document.createElement('canvas');c.width=v.width;c.height=v.height;shell.appendChild(c);const marks=document.createElement('div');marks.className='marks';[['tl','top-left'],['cc','center'],['br','bottom-right']].forEach(([cls])=>{const m=document.createElement('div');m.className='mark '+cls;m.textContent=mark;marks.appendChild(m)});shell.appendChild(marks);pages.appendChild(shell);await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise;status.textContent='Страница '+n+' из '+pdf.numPages;await new Promise(r=>requestAnimationFrame(r))}}catch(e){document.getElementById('pages').innerHTML='<div class="error">Не удалось открыть документ. Проверьте публичность ссылки.</div>'}})()${closeScript}</body></html>`;
+      tab.document.open();
+      tab.document.write(page);
+      tab.document.close();
+    }
+
+    function renderViewerModal() {
+      if (!activeViewerLecture) return;
+      const oldModal = document.getElementById('document-viewer-modal');
+      if (oldModal) oldModal.remove();
+
+      const sourceLink = normalizeDocumentLink(activeViewerLecture.link);
+      const lowerSourceLink = sourceLink.toLowerCase();
+      const isPdf = lowerSourceLink.includes('.pdf') || (activeViewerLecture.title || '').toLowerCase().includes('.pdf');
+      const isYandex = lowerSourceLink.includes('disk.yandex');
+      const watermarkText = getWatermarkText();
+      const documentMarkup = isPdf
+        ? '<div id="pdf-pages" class="w-full min-h-full p-4 overflow-auto bg-[#202020]"><div class="p-6 text-gray-400">Первая страница загружается…</div></div>'
+        : `<div class="w-full h-full relative"><iframe src="${sourceLink}" title="${activeViewerLecture.title}" allowfullscreen></iframe>${isYandex ? '<div class="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center text-gray-300">Яндекс.Диск запрещает встраивание этого файла на сторонние сайты. Нажмите «Открыть отдельно» или используйте публичную PDF-ссылку из Supabase.</div>' : ''}</div>`;
+
+      const modal = document.createElement('div');
+      modal.id = 'document-viewer-modal';
+      modal.className = 'viewer-modal';
+      modal.innerHTML = `
+        <div class="viewer-content">
+          <div class="viewer-header"><h3 class="text-lg font-bold text-[#c5a880]">${activeViewerLecture.title}</h3><div class="flex items-center gap-3"><button id="viewer-favorite-btn" type="button" class="text-2xl leading-none ${getFavoriteIds().includes(String(activeViewerLecture.id)) ? 'text-[#c5a880]' : 'text-gray-600'}" title="Добавить в избранное" aria-label="Добавить в избранное">♥</button><button id="open-separate-btn" type="button" class="text-xs text-[#c5a880] hover:text-white">Открыть отдельно</button><button id="close-viewer-btn" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-6 h-6"></i></button></div></div>
+          <div class="viewer-body ${isViewerBlurred ? 'blurred' : ''}" id="viewer-body-container">
+            ${documentMarkup}
+            ${isPdf ? '' : `<div class="viewer-watermark">${watermarkText}</div>`}
+            <div class="viewer-shield ${isViewerBlurred ? '' : 'hidden'}" id="viewer-shield-layer"><i data-lucide="shield-alert" class="w-11 h-11 text-[#c5a880]"></i><p class="text-sm text-[#c5a880]">Контент скрыт для защиты</p></div>
+          </div>
+        </div>
+        <div id="screenshot-alert" class="screenshot-warning hidden"><i data-lucide="shield-alert" class="w-[18px] h-[18px]"></i> Скриншоты запрещены!</div>
+      `;
+      document.body.appendChild(modal);
+      lucide.createIcons();
+      if (isPdf) renderPdfInline(sourceLink);
+
+      document.getElementById('viewer-favorite-btn').addEventListener('click', (event) => {
+        const button = event.currentTarget;
+        const result = toggleFavoriteLecture(activeViewerLecture.id);
+        button.classList.toggle('text-[#c5a880]', result.added);
+        button.classList.toggle('text-gray-600', !result.added);
+        button.title = result.added ? 'Убрать из избранного' : 'Добавить в избранное';
+        button.classList.remove('favorite-pop');
+        void button.offsetWidth;
+        button.classList.add('favorite-pop');
+      });
+      document.getElementById('open-separate-btn').addEventListener('click', () => openDocumentSeparately(sourceLink, activeViewerLecture.title, watermarkText, isPdf));
+      document.getElementById('close-viewer-btn').addEventListener('click', () => { modal.remove(); activeViewerLecture = null; });
+    }
+
+    window.addEventListener('blur', () => { isViewerBlurred = true; const s = document.getElementById('viewer-shield-layer'); const b = document.getElementById('viewer-body-container'); if (s && b) { s.classList.remove('hidden'); b.classList.add('blurred'); } });
+    window.addEventListener('focus', () => { isViewerBlurred = false; const s = document.getElementById('viewer-shield-layer'); const b = document.getElementById('viewer-body-container'); if (s && b) { s.classList.add('hidden'); b.classList.remove('blurred'); } });
+    window.addEventListener('keyup', (e) => { if (e.key === 'PrintScreen') { navigator.clipboard?.writeText(''); const a = document.getElementById('screenshot-alert'); if (a) { a.classList.remove('hidden'); setTimeout(() => a.classList.add('hidden'), 2000); } } });
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
+    renderApp();
+  </script>
+</body>
+</html>
