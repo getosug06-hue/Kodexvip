@@ -119,6 +119,7 @@
       'sb_publishable_tYtjlSH6ysCEog6WprfOOA_sdQnX6ew'
     );
     const ADMIN_PASSWORD = 'ЧайныйТунецВ1П';
+    const ADMIN_IP_STORAGE_KEY = 'archive_admin_bound_ip_v1';
     let currentScreen = 'auth';
     let currentStudent = null;
     let activeViewerLecture = null;
@@ -319,10 +320,22 @@
 
     async function fetchUserIP() {
       try {
-        const r = await fetch('https://ipify.org');
+        const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
         const j = await r.json();
         return j.ip || '';
       } catch { return ''; }
+    }
+
+    async function checkAndBindAdminIP() {
+      const ip = await fetchUserIP();
+      if (!ip) return { allowed: false, reason: 'Не удалось определить публичный IP.' };
+      const boundIP = localStorage.getItem(ADMIN_IP_STORAGE_KEY);
+      if (!boundIP) {
+        localStorage.setItem(ADMIN_IP_STORAGE_KEY, ip);
+        return { allowed: true };
+      }
+      if (boundIP !== ip) return { allowed: false, reason: 'Админка привязана к другому IP-адресу.' };
+      return { allowed: true };
     }
 
     async function renderApp() {
@@ -362,6 +375,15 @@
           submitButton.innerHTML = '<span class="login-spinner"></span> Проверка доступа…';
 
           if (keyInput === ADMIN_PASSWORD) {
+            const adminIPCheck = await checkAndBindAdminIP();
+            if (!adminIPCheck.allowed) {
+              errDiv.innerText = `${adminIPCheck.reason} Если это ваш новый IP, привязку нужно сбросить вручную.`;
+              errDiv.classList.remove('hidden');
+              submitButton.disabled = false;
+              submitButton.classList.remove('opacity-70');
+              submitButton.innerHTML = 'Получить доступ';
+              return;
+            }
             await transitionToScreen('admin');
             return;
           }
