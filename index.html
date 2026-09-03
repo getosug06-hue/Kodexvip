@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://gstatic.com" crossorigin>
   <link href="https://googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/supabase.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
@@ -984,7 +984,7 @@
           }
         });
       }
-      lucide.createIcons();
+      if (window.lucide?.createIcons) window.lucide.createIcons();
     }
 
     function normalizeDocumentLink(link) {
@@ -1103,7 +1103,7 @@
         <div id="screenshot-alert" class="screenshot-warning hidden"><i data-lucide="shield-alert" class="w-[18px] h-[18px]"></i> Скриншоты запрещены!</div>
       `;
       document.body.appendChild(modal);
-      lucide.createIcons();
+      if (window.lucide?.createIcons) window.lucide.createIcons();
       if (isPdf) renderPdfInline(sourceLink);
 
       document.getElementById('viewer-favorite-btn').addEventListener('click', (event) => {
