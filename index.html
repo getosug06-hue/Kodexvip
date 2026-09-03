@@ -125,6 +125,11 @@
     let activeViewerLecture = null;
     let isViewerBlurred = false;
     let showFavorites = false;
+    let studentLectures = [];
+    let notificationRefreshTimer = null;
+    const favoriteSortOrder = { conspect: 'newest', presentation: 'newest' };
+    const STUDENT_SESSION_KEY = 'archive_student_session_key_v1';
+    const PUSH_PUBLIC_KEY = 'BGe1f3PlxqrMlSoV4DUMlI2nkKVrh58fkZ-RFM4DvW8xofi9EtFKh3FblK5yNS9RvWlH_do1fL38JLD4KlbVdCs';
     let accessMonitorTimer = null;
     let lastRemoteAccessCheck = 0;
     const ADMIN_PAGE_SIZE = 8;
@@ -201,6 +206,70 @@
       } catch { return []; }
     }
 
+    function getLectureTimestamp(lecture) {
+      if (lecture?.created_at) {
+        const timestamp = new Date(lecture.created_at).getTime();
+        if (Number.isFinite(timestamp)) return timestamp;
+      }
+      const parts = String(lecture?.date || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      if (parts) return new Date(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1])).getTime();
+      return 0;
+    }
+
+    function sortLectures(lectures, order) {
+      return [...lectures].sort((a, b) => {
+        const difference = getLectureTimestamp(a) - getLectureTimestamp(b);
+        return order === 'oldest' ? difference : -difference;
+      });
+    }
+
+    function getReadNotificationIds() {
+      return Array.isArray(currentStudent?.read_notification_ids) ? currentStudent.read_notification_ids.map(String) : [];
+    }
+
+    function getUnreadNotifications(lectures = studentLectures) {
+      const readIds = new Set(getReadNotificationIds());
+      const profileCreatedAt = currentStudent?.created_at ? new Date(currentStudent.created_at).getTime() : 0;
+      return lectures.filter(lecture => {
+        const lectureTime = getLectureTimestamp(lecture);
+        return lectureTime > profileCreatedAt && !readIds.has(String(lecture.id));
+      }).sort((a, b) => getLectureTimestamp(b) - getLectureTimestamp(a));
+    }
+
+    function updateNotificationsBadge() {
+      const badge = document.getElementById('notifications-badge');
+      if (!badge) return;
+      const count = getUnreadNotifications().length;
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.classList.toggle('hidden', count === 0);
+    }
+
+    async function markNotificationRead(lectureId) {
+      if (!currentStudent?.id) return;
+      const nextIds = Array.from(new Set([...getReadNotificationIds(), String(lectureId)]));
+      currentStudent.read_notification_ids = nextIds;
+      const { error } = await _supabase.from('access_keys').update({ read_notification_ids: nextIds }).eq('id', currentStudent.id);
+      if (error) console.error('Не удалось сохранить прочитанное уведомление:', error);
+      updateNotificationsBadge();
+    }
+
+    function stopNotificationMonitor() {
+      if (notificationRefreshTimer) clearInterval(notificationRefreshTimer);
+      notificationRefreshTimer = null;
+    }
+
+    function startNotificationMonitor() {
+      stopNotificationMonitor();
+      notificationRefreshTimer = setInterval(async () => {
+        if (currentScreen !== 'student' || !currentStudent) return;
+        const { data, error } = await _supabase.from('lectures').select('*').order('created_at', { ascending: false });
+        if (!error && Array.isArray(data)) {
+          studentLectures = data;
+          updateNotificationsBadge();
+        }
+      }, 30000);
+    }
+
     function showFavoriteToast(message) {
       let toast = document.getElementById('favorite-toast');
       if (!toast) {
@@ -233,9 +302,43 @@
       return { added, next };
     }
 
+    function saveStudentSession(student) {
+      if (student?.key_value) localStorage.setItem(STUDENT_SESSION_KEY, student.key_value);
+    }
+
+    function clearStudentSession() {
+      localStorage.removeItem(STUDENT_SESSION_KEY);
+    }
+
+    async function restoreStudentSession() {
+      const savedKey = localStorage.getItem(STUDENT_SESSION_KEY);
+      if (!savedKey) return false;
+      try {
+        const { data: keys, error } = await _supabase.from('access_keys').select('*').eq('key_value', savedKey);
+        const student = keys?.[0];
+        if (error || !student || student.status === 'Не активен' || isKeyExpired(student.expires_at)) {
+          clearStudentSession();
+          return false;
+        }
+        const ip = await fetchUserIP();
+        if (student.bound_ip && ip && student.bound_ip !== ip) {
+          clearStudentSession();
+          return false;
+        }
+        currentScreen = 'student';
+        currentStudent = student;
+        await renderApp();
+        startAccessMonitor();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     function stopAccessMonitor() {
       if (accessMonitorTimer) clearInterval(accessMonitorTimer);
       accessMonitorTimer = null;
+      stopNotificationMonitor();
     }
 
     async function lockExpiredStudent(message = 'Срок действия доступа закончился. Обратитесь к администратору.') {
@@ -274,6 +377,7 @@
       await new Promise(resolve => setTimeout(resolve, 1220));
       currentScreen = screen;
       currentStudent = student;
+      if (screen === 'student') saveStudentSession(student);
       await renderApp();
       if (screen === 'student') startAccessMonitor();
       document.body.classList.remove('login-transition');
@@ -318,6 +422,13 @@
       }, { passive: true });
     }
 
+    function withTimeout(promise, milliseconds = 15000) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Превышено время ожидания ответа базы данных.')), milliseconds))
+      ]);
+    }
+
     async function fetchUserIP() {
       try {
         const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
@@ -338,7 +449,90 @@
       return { allowed: true };
     }
 
+        function renderFavoritesView(lectures, targetContainer, bindLectureActions) {
+      const favoriteIds = new Set(getFavoriteIds());
+      const favoriteLectures = lectures.filter(lecture => favoriteIds.has(String(lecture.id)));
+      const groups = [
+        { key: 'conspect', title: '📝 Конспекты', type: 'Конспект' },
+        { key: 'presentation', title: '📊 Презентации', type: 'Презентация' }
+      ];
+      const renderCard = lecture => `<div class="bg-[#121216] border border-[#c5a880] hover:border-[#dfbe91] p-4 rounded-lg mb-3 flex justify-between items-center transition"><div class="open-doc-btn cursor-pointer flex-grow" data-id="${lecture.id}" data-title="${lecture.title}" data-link="${lecture.link}"><div class="font-medium text-sm text-white">${lecture.title}</div><div class="text-xs text-gray-500 mt-1">${lecture.subject_name} • 📅 ${lecture.date || ''}</div></div><button type="button" class="favorite-toggle-btn text-[#c5a880] text-2xl ml-3" data-id="${lecture.id}" title="Убрать из избранного">♥</button></div>`;
+      targetContainer.innerHTML = `<div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">${groups.map(group => { const items = sortLectures(favoriteLectures.filter(lecture => lecture.material_type === group.type), favoriteSortOrder[group.key]); return `<div><div class="flex items-center justify-between gap-3 mb-3"><h4 class="text-md font-semibold text-[#c5a880]">${group.title}</h4><select class="favorite-sort-select bg-[#18181f] border border-white/10 rounded px-2 py-1 text-xs text-white" data-favorite-group="${group.key}" aria-label="Сортировка ${group.title}"><option value="newest" ${favoriteSortOrder[group.key] === 'newest' ? 'selected' : ''}>Сначала новые</option><option value="oldest" ${favoriteSortOrder[group.key] === 'oldest' ? 'selected' : ''}>Сначала старые</option></select></div>${items.map(renderCard).join('') || '<div class="text-gray-500 text-xs italic">В избранном пока нет материалов.</div>'}</div>`; }).join('')}</div>`;
+      bindLectureActions();
+      targetContainer.querySelectorAll('.favorite-sort-select').forEach(select => select.addEventListener('change', () => {
+        favoriteSortOrder[select.dataset.favoriteGroup] = select.value;
+        renderFavoritesView(lectures, targetContainer, bindLectureActions);
+      }));
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+    }
+
+    async function enablePushNotifications() {
+      if (!currentStudent?.id || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert('Этот браузер не поддерживает внешние уведомления.');
+        return;
+      }
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          alert('Разрешение на уведомления не предоставлено. Его можно включить в настройках браузера.');
+          return;
+        }
+        const registration = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+        const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH_PUBLIC_KEY) });
+        const subscriptionJson = subscription.toJSON();
+        const { error } = await _supabase.from('push_subscriptions').upsert([{ student_id: currentStudent.id, endpoint: subscription.endpoint, subscription_json: subscriptionJson }], { onConflict: 'endpoint' });
+        if (error) throw error;
+        const button = document.getElementById('enable-push-btn');
+        if (button) { button.textContent = 'Уведомления включены'; button.disabled = true; button.classList.add('opacity-60'); }
+        alert('Внешние уведомления включены.');
+      } catch (error) {
+        console.error('Ошибка подписки на push:', error);
+        alert(`Не удалось включить уведомления.\\n\\n${error.message || 'Проверьте разрешения браузера и миграцию Supabase.'}`);
+      }
+    }
+
+    function handlePendingLecture(lectures) {
+      const lectureId = new URLSearchParams(window.location.search).get('lecture');
+      if (!lectureId) return;
+      const lecture = lectures.find(item => String(item.id) === String(lectureId));
+      if (!lecture) return;
+      history.replaceState({}, document.title, window.location.pathname);
+      activeViewerLecture = { id: lecture.id, title: lecture.title, link: lecture.link };
+      renderViewerModal();
+    }
+
+    function closeNotificationsPanel() {
+      document.getElementById('notifications-panel')?.remove();
+    }
+
+    function renderNotificationsPanel() {
+      closeNotificationsPanel();
+      const notifications = getUnreadNotifications();
+      const panel = document.createElement('div');
+      panel.id = 'notifications-panel';
+      panel.className = 'fixed top-20 right-6 z-[120] w-[min(420px,calc(100vw-32px))] max-h-[70vh] overflow-y-auto bg-[#121216] border border-[rgba(197,168,128,0.45)] rounded-lg shadow-2xl p-4';
+      panel.innerHTML = `<div class="flex items-center justify-between gap-3 mb-3"><h3 class="text-lg font-bold text-[#c5a880]">Уведомления</h3><button id="close-notifications-btn" type="button" class="text-gray-400 hover:text-white text-xl" aria-label="Закрыть уведомления">×</button></div>${notifications.length ? notifications.map(lecture => `<button type="button" class="notification-lecture-btn w-full text-left bg-[#18181f] hover:border-[#c5a880] border border-white/10 rounded p-3 mb-2 transition" data-id="${lecture.id}"><div class="text-white text-sm font-medium">Новый материал: ${lecture.title}</div><div class="text-xs text-gray-500 mt-1">${lecture.subject_name} • ${lecture.material_type} • ${lecture.date || ''}</div></button>`).join('') : '<div class="text-gray-500 text-sm italic py-3">Новых материалов нет.</div>'}`;
+      document.body.appendChild(panel);
+      document.getElementById('close-notifications-btn')?.addEventListener('click', closeNotificationsPanel);
+      panel.querySelectorAll('.notification-lecture-btn').forEach(button => button.addEventListener('click', async () => {
+        const lecture = studentLectures.find(item => String(item.id) === String(button.dataset.id));
+        if (!lecture) return;
+        await markNotificationRead(lecture.id);
+        closeNotificationsPanel();
+        activeViewerLecture = { id: lecture.id, title: lecture.title, link: lecture.link };
+        renderViewerModal();
+      }));
+      updateNotificationsBadge();
+    }
+
     async function renderApp() {
+
       const container = document.getElementById('screen-content');
       container.innerHTML = '';
 
@@ -426,6 +620,7 @@
                 } catch { k.favorite_lecture_ids = []; }
               }
 
+              saveStudentSession(k);
               await transitionToScreen('student', k);
             } else {
               errDiv.innerText = 'Неверный ключ доступа.';
@@ -446,6 +641,7 @@
       else if (currentScreen === 'student') {
         const { data: subjects } = await _supabase.from('subjects').select('*').order('name');
         const { data: lectures } = await _supabase.from('lectures').select('*').order('created_at', { ascending: false });
+        studentLectures = Array.isArray(lectures) ? lectures : [];
         const studentActive = currentStudent?.status !== 'Не активен' && !isKeyExpired(currentStudent?.expires_at);
         const studentStatusLabel = studentActive ? '✓ Подписка активна' : '✕ Подписка неактивна';
         const studentStatusClass = studentActive ? 'text-green-400' : 'text-red-400';
@@ -461,6 +657,8 @@
               </div>
               <div class="flex items-center gap-3">
                 <button id="favorites-btn" class="bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-4 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition flex items-center gap-2"><span class="text-lg leading-none">♥</span> Избранное</button>
+                <button id="notifications-btn" type="button" class="relative bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-3 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition" aria-label="Уведомления"><i data-lucide="bell" class="w-5 h-5"></i><span id="notifications-badge" class="hidden absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] leading-5 font-bold text-center">0</span></button>
+                <button id="enable-push-btn" type="button" class="bg-transparent border border-[#c5a880]/60 text-[#c5a880] py-2 px-3 text-xs rounded-md hover:bg-[#c5a880] hover:text-black transition">Включить push</button>
                 <button id="logout-btn" class="bg-transparent border border-white/20 text-white py-2 px-5 text-sm rounded-md hover:bg-white/5 hover:border-white transition flex items-center gap-2"><i data-lucide="log-out" class="w-4 h-4"></i> Выйти</button>
               </div>
             </header>
@@ -502,29 +700,25 @@
 
         document.getElementById('logout-btn').addEventListener('click', () => {
           stopAccessMonitor();
+          clearStudentSession();
           currentScreen = 'auth'; currentStudent = null; renderApp();
         });
 
+        document.getElementById('notifications-btn').addEventListener('click', renderNotificationsPanel);
+        document.getElementById('enable-push-btn').addEventListener('click', enablePushNotifications);
+        if (!('Notification' in window) || Notification.permission === 'granted') {
+          const pushButton = document.getElementById('enable-push-btn');
+          if (pushButton && Notification.permission === 'granted') { pushButton.textContent = 'Уведомления разрешены'; }
+        }
+        updateNotificationsBadge();
+        handlePendingLecture(lectures);
+
         document.getElementById('favorites-btn').addEventListener('click', () => {
+          closeNotificationsPanel();
           showFavorites = !showFavorites;
           document.querySelectorAll('.lecture-subject-select').forEach(item => item.classList.toggle('border-[#c5a880]', showFavorites));
-          if (showFavorites) {
-            const favoriteLectures = lectures.filter(l => getFavoriteIds().includes(String(l.id)));
-            const targetContainer = document.getElementById('lectures-container');
-            targetContainer.innerHTML = favoriteLectures.length ? `
-              <div class="lg:col-span-2">
-                <h4 class="text-md font-semibold text-[#c5a880] mb-3 flex items-center gap-1.5"><span class="text-lg">♥</span> Избранные материалы</h4>
-                ${favoriteLectures.map(l => `
-                  <div class="bg-[#121216] border border-[#c5a880] hover:border-[#dfbe91] p-4 rounded-lg mb-3 flex justify-between items-center transition">
-                    <div class="open-doc-btn cursor-pointer flex-grow" data-id="${l.id}" data-title="${l.title}" data-link="${l.link}"><div class="font-medium text-sm text-white">${l.title}</div><div class="text-xs text-gray-500 mt-1">${l.subject_name} • 📅 ${l.date || ''}</div></div>
-                    <button type="button" class="favorite-toggle-btn text-[#c5a880] text-2xl ml-3" data-id="${l.id}" title="Убрать из избранного">♥</button>
-                  </div>
-                `).join('')}
-              </div>` : '<div class="col-span-2 text-gray-500 italic">В избранном пока нет материалов.</div>';
-            bindLectureActions();
-          } else {
-            renderApp();
-          }
+          if (showFavorites) renderFavoritesView(lectures, document.getElementById('lectures-container'), bindLectureActions);
+          else renderApp();
         });
 
         function bindLectureActions() {
@@ -756,9 +950,31 @@
 
         document.getElementById('publish-lecture-form').addEventListener('submit', async (e) => {
           e.preventDefault();
-          await _supabase.from('lectures').insert([{ subject_name: document.getElementById('lecture-subject-select').value, material_type: document.getElementById('lecture-type-select').value, date: new Date().toLocaleDateString('ru-RU'), title: document.getElementById('lecture-title').value.trim(), link: document.getElementById('lecture-link').value.trim() }]);
-          alert('Опубликовано!');
-          renderApp();
+          const form = e.currentTarget;
+          const submitButton = form.querySelector('button[type="submit"]');
+          const subjectName = document.getElementById('lecture-subject-select').value;
+          const materialType = document.getElementById('lecture-type-select').value;
+          const title = document.getElementById('lecture-title').value.trim();
+          const link = document.getElementById('lecture-link').value.trim();
+          if (!subjectName || !title || !link) {
+            alert('Заполните предмет, тему и ссылку на материал.');
+            return;
+          }
+          submitButton.disabled = true;
+          submitButton.classList.add('opacity-60');
+          submitButton.textContent = 'Публикация…';
+          try {
+            const { error: publishError } = await withTimeout(_supabase.from('lectures').insert([{ subject_name: subjectName, material_type: materialType, date: new Date().toLocaleDateString('ru-RU'), title, link }]));
+            if (publishError) throw publishError;
+            alert('Материал опубликован!');
+            await renderApp();
+          } catch (error) {
+            console.error('Ошибка публикации материала:', error);
+            alert(`Не удалось опубликовать материал.\\n\\n${error.message || 'Проверьте ссылку, права доступа и соединение с базой данных.'}`);
+            submitButton.disabled = false;
+            submitButton.classList.remove('opacity-60');
+            submitButton.textContent = 'Опубликовать';
+          }
         });
       }
       lucide.createIcons();
@@ -901,7 +1117,9 @@
     window.addEventListener('focus', () => { isViewerBlurred = false; const s = document.getElementById('viewer-shield-layer'); const b = document.getElementById('viewer-body-container'); if (s && b) { s.classList.add('hidden'); b.classList.remove('blurred'); } });
     window.addEventListener('keyup', (e) => { if (e.key === 'PrintScreen') { navigator.clipboard?.writeText(''); const a = document.getElementById('screenshot-alert'); if (a) { a.classList.remove('hidden'); setTimeout(() => a.classList.add('hidden'), 2000); } } });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
-    renderApp();
+    restoreStudentSession().then(restored => {
+      if (!restored) renderApp();
+    });
   </script>
 </body>
 </html>
