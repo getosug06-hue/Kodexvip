@@ -1124,8 +1124,19 @@
     window.addEventListener('focus', () => { isViewerBlurred = false; const s = document.getElementById('viewer-shield-layer'); const b = document.getElementById('viewer-body-container'); if (s && b) { s.classList.add('hidden'); b.classList.remove('blurred'); } });
     window.addEventListener('keyup', (e) => { if (e.key === 'PrintScreen') { navigator.clipboard?.writeText(''); const a = document.getElementById('screenshot-alert'); if (a) { a.classList.remove('hidden'); setTimeout(() => a.classList.add('hidden'), 2000); } } });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Сначала сразу показываем форму входа. Медленный запрос к Supabase
+    // не должен блокировать отображение интерфейса на мобильном интернете.
+    renderApp();
     restoreStudentSession().then(restored => {
-      if (!restored) renderApp();
+      // При успешном восстановлении функция сама отрисует профиль.
+      // Если профиль не найден, уже показанная форма входа остаётся на месте.
+      if (!restored && currentScreen !== 'auth') {
+        currentScreen = 'auth';
+        currentStudent = null;
+        renderApp();
+      }
+    }).catch(error => {
+      console.warn('Не удалось восстановить сессию студента:', error);
     });
   </script>
 </body>
