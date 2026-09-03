@@ -97,6 +97,12 @@
       .pdf-page-watermark.top-left { top: 10px; left: 10px; }
       .pdf-page-watermark.bottom-right { right: 10px; bottom: 10px; }
       .favorite-toast { bottom: 18px; max-width: calc(100vw - 32px); text-align: center; }
+      .student-header { flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+      .student-header-brand { width: 100%; min-width: 0; }
+      .student-header-brand h2 { font-size: 1.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .student-header-actions { width: 100%; display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px !important; }
+      .student-header-actions button { min-width: 0; width: 100%; justify-content: center; padding: 9px 5px !important; font-size: 0.68rem !important; white-space: nowrap; }
+      .student-header-actions #notifications-btn { padding-left: 10px !important; padding-right: 10px !important; }
     }
     @media (hover: none), (pointer: coarse) {
       .cursor-trail-dot { display: none; }
@@ -648,14 +654,15 @@
         
         container.innerHTML = `
           <div class="max-w-[1300px] w-full mx-auto p-6 flex-grow flex flex-col">
-            <header class="flex justify-between items-center border-b border-[rgba(197,168,128,0.15)] pb-5 mb-8">
-              <div class="flex items-center gap-4">
+                        <header class="student-header flex justify-between items-center border-b border-[rgba(197,168,128,0.15)] pb-5 mb-8">
+              <div class="student-header-brand flex items-center gap-4">
+
                 <div class="w-12 h-12 flex items-center justify-center rounded-full border border-[rgba(197,168,128,0.15)] text-[#c5a880] shadow-[0_0_8px_rgba(197,168,128,0.3)]">
                   <i data-lucide="scale" class="w-6 h-6"></i>
                 </div>
                 <h2 class="text-2xl font-bold tracking-wide">Архив Юристов</h2>
               </div>
-              <div class="flex items-center gap-3">
+              <div class="student-header-actions flex items-center gap-3">
                 <button id="favorites-btn" class="bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-4 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition flex items-center gap-2"><span class="text-lg leading-none">♥</span> Избранное</button>
                 <button id="notifications-btn" type="button" class="relative bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-3 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition" aria-label="Уведомления"><i data-lucide="bell" class="w-5 h-5"></i><span id="notifications-badge" class="hidden absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] leading-5 font-bold text-center">0</span></button>
                 <button id="enable-push-btn" type="button" class="bg-transparent border border-[#c5a880]/60 text-[#c5a880] py-2 px-3 text-xs rounded-md hover:bg-[#c5a880] hover:text-black transition">Включить push</button>
