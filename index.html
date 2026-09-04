@@ -603,13 +603,14 @@
       }));
     }
     async function loadEventsData() {
-      const [{ data: events }, { data: registrations }] = await Promise.all([
+      const [{ data: events }, { data: registrations }, { data: registrationCounts }] = await Promise.all([
         _supabase.from('events').select('*').eq('is_published', true).order('starts_at', { ascending: true }),
-        _supabase.from('event_registrations').select('*')
+        _supabase.from('event_registrations').select('*').eq('student_id', currentStudent?.id),
+        _supabase.from('event_registrations').select('id,event_id')
       ]);
       studentEvents = Array.isArray(events) ? events : [];
-      allEventRegistrations = Array.isArray(registrations) ? registrations : [];
-      studentEventRegistrations = allEventRegistrations.filter(item => String(item.student_id) === String(currentStudent?.id));
+      allEventRegistrations = Array.isArray(registrationCounts) ? registrationCounts : [];
+      studentEventRegistrations = Array.isArray(registrations) ? registrations : [];
       studentEvents._counts = Object.fromEntries(studentEvents.map(event => [event.id, allEventRegistrations.filter(item => String(item.event_id) === String(event.id)).length]));
     }
     function eventFormFields(type, registration = null) {
