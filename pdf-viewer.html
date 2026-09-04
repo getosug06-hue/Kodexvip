@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Просмотр PDF</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #202020; color: #ddd; font-family: Arial, sans-serif; }
+    .bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; background: #111; border-bottom: 1px solid #6f5a3b; }
+    .bar strong { color: #dfbe91; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar button { padding: 7px 11px; color: #dfbe91; background: transparent; border: 1px solid #6f5a3b; border-radius: 4px; cursor: pointer; }
+    .status { margin: 12px 16px; text-align: center; color: #aaa; font-size: 12px; }
+    .pages { padding: 16px; }
+    .shell { position: relative; width: max-content; max-width: 100%; margin: 0 auto 18px; }
+    .shell canvas { display: block; max-width: 100%; height: auto; box-shadow: 0 4px 20px #000; }
+    .marks { position: absolute; inset: 0; pointer-events: none; user-select: none; overflow: hidden; }
+    .mark { position: absolute; color: rgba(223,190,145,.42); font-size: 15px; font-weight: 700; letter-spacing: .035em; text-shadow: 0 1px 3px rgba(0,0,0,.72), 0 0 6px rgba(255,246,230,.18); white-space: nowrap; }
+    .mark.tl { top: 16px; left: 18px; transform: rotate(-14deg); }
+    .mark.cc { top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-24deg); color: rgba(223,190,145,.30); }
+    .mark.br { right: 18px; bottom: 16px; transform: rotate(-14deg); }
+    .error { padding: 24px; color: #fca5a5; text-align: center; }
+    @media (max-width: 600px) { .pages { padding: 8px; } .bar { padding: 10px; } .mark { font-size: 11px; } }
+  </style>
+</head>
+<body>
+  <div class="bar"><strong id="title">Документ</strong><button type="button" onclick="window.close()">Закрыть вкладку</button></div>
+  <div id="status" class="status">Документ загружается…</div>
+  <div id="pages" class="pages"></div>
+  <script src="./pdf.min.js"></script>
+  <script>
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const url = params.get('url');
+      const title = params.get('title') || 'Документ';
+      const watermark = params.get('watermark') || 'Архив Юристов';
+      document.title = `Просмотр: ${title}`;
+      document.getElementById('title').textContent = title;
+      const status = document.getElementById('status');
+      const pages = document.getElementById('pages');
+      if (!url) {
+        status.textContent = 'Не указана ссылка на PDF';
+        return;
+      }
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.js';
+      try {
+        const pdf = await window.pdfjsLib.getDocument({ url, withCredentials: false }).promise;
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const page = await pdf.getPage(pageNumber);
+          const rawViewport = page.getViewport({ scale: 1 });
+          const scale = Math.min(1.35, Math.max(320, Math.min(window.innerWidth - 32, 900)) / rawViewport.width);
+          const viewport = page.getViewport({ scale });
+          const shell = document.createElement('div');
+          shell.className = 'shell';
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          shell.appendChild(canvas);
+          const marks = document.createElement('div');
+          marks.className = 'marks';
+          [['tl', 'top-left'], ['cc', 'center'], ['br', 'bottom-right']].forEach(([position]) => {
+            const mark = document.createElement('div');
+            mark.className = `mark ${position}`;
+            mark.textContent = watermark;
+            marks.appendChild(mark);
+          });
+          shell.appendChild(marks);
+          pages.appendChild(shell);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          status.textContent = `Страница ${pageNumber} из ${pdf.numPages}`;
+        }
+      } catch (error) {
+        console.error('Ошибка отдельного просмотра PDF:', error);
+        status.textContent = 'Не удалось открыть PDF';
+        pages.innerHTML = '<div class="error">Проверьте, что ссылка ведёт на доступный PDF-файл.</div>';
+      }
+    })();
+  </script>
+</body>
+</html>
