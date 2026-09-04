@@ -5,13 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Архив Юристов — Закрытый образовательный портал</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./tailwind.css">
   <script src="./supabase.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="./lucide.min.js"></script>
+  <script src="./pdf.min.js"></script>
 
   <style>
     :root {
@@ -70,9 +67,7 @@
     .pdf-page-watermark.center { top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-24deg); color: rgba(223,190,145,0.30); }
     .pdf-page-watermark.bottom-right { right: 18px; bottom: 16px; transform: rotate(-14deg); }
     .viewer-body iframe { width: 100%; height: 100%; border: none; }
-    .viewer-body.blurred iframe { filter: blur(14px) brightness(0.3); transition: filter 0.2s; }
     .viewer-watermark { position: absolute; inset: 0; pointer-events: none; z-index: 5; display: flex; flex-wrap: wrap; gap: 60px; align-content: center; justify-content: center; opacity: 0.10; color: var(--gold); font-size: 1.1rem; font-weight: 600; transform: rotate(-28deg); overflow: hidden; user-select: none; }
-    .viewer-shield { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--gold); background: rgba(10,10,12,0.85); backdrop-filter: blur(6px); }
     .screenshot-warning { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,74,74,0.95); color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; z-index: 150; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 30px rgba(255,74,74,0.4); }
     .favorite-toggle-btn { transition: transform 0.18s ease, color 0.18s ease, filter 0.18s ease; }
     .favorite-toggle-btn.favorite-pop { animation: favoritePop 0.5s ease both; }
@@ -434,7 +429,7 @@
     async function transitionToScreen(screen, student = null) {
       stopAccessMonitor();
       document.body.classList.add('login-transition');
-      await new Promise(resolve => setTimeout(resolve, 180));
+      await new Promise(resolve => setTimeout(resolve, 1220));
       currentScreen = screen;
       currentStudent = student;
       if (screen === 'student') saveStudentSession(student);
@@ -1396,7 +1391,7 @@
         return;
       }
       try {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.js';
         const pdf = await window.pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise;
         const status = document.createElement('div');
         status.className = 'text-center text-xs text-gray-400 pb-3';
@@ -1430,25 +1425,9 @@
     }
 
     function openDocumentSeparately(url, title, watermarkText, isPdf) {
-      const tab = window.open('', '_blank');
-      if (!tab) { alert('Браузер заблокировал новую вкладку. Разрешите всплывающие окна для этого файла.'); return; }
-      const safeUrl = JSON.stringify(url);
-      const safeTitle = JSON.stringify(title || 'Документ');
-      const safeWatermark = JSON.stringify(watermarkText);
-      if (!isPdf) {
-        const page = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title || 'Документ'}</title><style>body{margin:0;background:#111;color:#ddd;font-family:Arial,sans-serif}.bar{position:sticky;top:0;background:#111;padding:12px 16px;z-index:5}.wrap{height:calc(100vh - 48px);position:relative}.wrap iframe{width:100%;height:100%;border:0}.marks{position:absolute;inset:0;pointer-events:none}.mark{position:absolute;color:rgba(223,190,145,.42);font-size:15px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.72),0 0 6px rgba(255,246,230,.18);white-space:nowrap}.mark.tl{top:16px;left:18px;transform:rotate(-14deg)}.mark.cc{top:50%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);color:rgba(223,190,145,.30)}.mark.br{right:18px;bottom:16px;transform:rotate(-14deg)}.hint{padding:20px;color:#fca5a5}</style></head><body><div class="bar"><strong>${title || 'Документ'}</strong></div><div class="wrap"><iframe src=${safeUrl} title=${safeTitle} allowfullscreen></iframe><div class="marks"><div class="mark tl">${watermarkText}</div><div class="mark cc">${watermarkText}</div><div class="mark br">${watermarkText}</div></div></div></body></html>`;
-        tab.document.open();
-        tab.document.write(page);
-        tab.document.close();
-        return;
-      }
-      const closeScript = '</scr' + 'ipt>';
-      const page = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>${title || 'Документ'}</title><style>body{margin:0;background:#202020;color:#ddd;font-family:Arial,sans-serif}.bar{position:sticky;top:0;background:#111;padding:12px 16px;z-index:5}.pages{padding:16px}.shell{position:relative;width:max-content;max-width:100%;margin:0 auto 18px}.shell canvas{display:block;max-width:100%;height:auto;box-shadow:0 4px 20px #000}.marks{position:absolute;inset:0;pointer-events:none}.mark{position:absolute;color:rgba(223,190,145,.42);font-size:15px;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,.72),0 0 6px rgba(255,246,230,.18);white-space:nowrap}.mark.tl{top:16px;left:18px;transform:rotate(-14deg)}.mark.cc{top:50%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);color:rgba(223,190,145,.30)}.mark.br{right:18px;bottom:16px;transform:rotate(-14deg)}.error{padding:24px;color:#fca5a5}</style></head><body><div class="bar"><strong>${title || 'Документ'}</strong><span id="status" style="margin-left:16px;color:#aaa"></span></div><div id="pages" class="pages"></div><script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js">${closeScript}<script>(async()=>{const url=${safeUrl};const mark=${safeWatermark};const pdfjsLib=window.pdfjsLib;pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';try{const pdf=await pdfjsLib.getDocument({url,withCredentials:false}).promise;const pages=document.getElementById('pages');const status=document.getElementById('status');for(let n=1;n<=pdf.numPages;n++){const p=await pdf.getPage(n);const v=p.getViewport({scale:1.35});const shell=document.createElement('div');shell.className='shell';const c=document.createElement('canvas');c.width=v.width;c.height=v.height;shell.appendChild(c);const marks=document.createElement('div');marks.className='marks';[['tl','top-left'],['cc','center'],['br','bottom-right']].forEach(([cls])=>{const m=document.createElement('div');m.className='mark '+cls;m.textContent=mark;marks.appendChild(m)});shell.appendChild(marks);pages.appendChild(shell);await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise;status.textContent='Страница '+n+' из '+pdf.numPages;await new Promise(r=>requestAnimationFrame(r))}}catch(e){document.getElementById('pages').innerHTML='<div class="error">Не удалось открыть документ. Проверьте публичность ссылки.</div>'}})()${closeScript}</body></html>`;
-      tab.document.open();
-      tab.document.write(page);
-      tab.document.close();
+      const tab = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!tab) window.location.assign(url);
     }
-
     function renderViewerModal() {
       if (!activeViewerLecture) return;
       const oldModal = document.getElementById('document-viewer-modal');
@@ -1469,10 +1448,9 @@
       modal.innerHTML = `
         <div class="viewer-content">
           <div class="viewer-header"><h3 class="text-lg font-bold text-[#c5a880]">${activeViewerLecture.title}</h3><div class="flex items-center gap-3"><button id="viewer-favorite-btn" type="button" class="text-2xl leading-none ${getFavoriteIds().includes(String(activeViewerLecture.id)) ? 'text-[#c5a880]' : 'text-gray-600'}" title="Добавить в избранное" aria-label="Добавить в избранное">♥</button><button id="open-separate-btn" type="button" class="text-xs text-[#c5a880] hover:text-white">Открыть отдельно</button><button id="close-viewer-btn" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-6 h-6"></i></button></div></div>
-          <div class="viewer-body ${isViewerBlurred ? 'blurred' : ''}" id="viewer-body-container">
+          <div class="viewer-body" id="viewer-body-container">
             ${documentMarkup}
             ${isPdf ? '' : `<div class="viewer-watermark">${watermarkText}</div>`}
-            <div class="viewer-shield ${isViewerBlurred ? '' : 'hidden'}" id="viewer-shield-layer"><i data-lucide="shield-alert" class="w-11 h-11 text-[#c5a880]"></i><p class="text-sm text-[#c5a880]">Контент скрыт для защиты</p></div>
           </div>
         </div>
         <div id="screenshot-alert" class="screenshot-warning hidden"><i data-lucide="shield-alert" class="w-[18px] h-[18px]"></i> Скриншоты запрещены!</div>
@@ -1495,8 +1473,6 @@
       document.getElementById('close-viewer-btn').addEventListener('click', () => { modal.remove(); activeViewerLecture = null; });
     }
 
-    window.addEventListener('blur', () => { isViewerBlurred = true; const s = document.getElementById('viewer-shield-layer'); const b = document.getElementById('viewer-body-container'); if (s && b) { s.classList.remove('hidden'); b.classList.add('blurred'); } });
-    window.addEventListener('focus', () => { isViewerBlurred = false; const s = document.getElementById('viewer-shield-layer'); const b = document.getElementById('viewer-body-container'); if (s && b) { s.classList.add('hidden'); b.classList.remove('blurred'); } });
     window.addEventListener('keyup', (e) => { if (e.key === 'PrintScreen') { navigator.clipboard?.writeText(''); const a = document.getElementById('screenshot-alert'); if (a) { a.classList.remove('hidden'); setTimeout(() => a.classList.add('hidden'), 2000); } } });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     // Сначала сразу показываем форму входа. Медленный запрос к Supabase
