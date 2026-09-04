@@ -372,7 +372,7 @@
       const savedKey = localStorage.getItem(STUDENT_SESSION_KEY);
       if (!savedKey) return false;
       try {
-        const { data: keys, error } = await withTimeout(_supabase.from('access_keys').select('*').eq('key_value', savedKey));
+        const { data: keys, error } = await withTimeout(_supabase.from('access_keys').select('*').eq('key_value', savedKey).limit(1), 30000);
         const student = keys?.[0];
         if (error || !student || student.status === 'Не активен' || isKeyExpired(student.expires_at)) {
           clearStudentSession();
@@ -948,7 +948,7 @@
           }
 
           try {
-            const { data: keys, error } = await withTimeout(_supabase.from('access_keys').select('*').eq('key_value', keyInput));
+            const { data: keys, error } = await withTimeout(_supabase.from('access_keys').select('*').eq('key_value', keyInput).limit(1), 30000);
             if (error) throw error;
 
             if (keys && keys.length > 0) {
@@ -980,7 +980,9 @@
               submitButton.innerHTML = 'Получить доступ';
             }
           } catch (err) {
-            errDiv.innerText = 'Ошибка соединения с базой данных.';
+            errDiv.innerText = /Превышено время ожидания/.test(err?.message || '')
+              ? 'Сеть отвечает дольше обычного. Проверьте мобильный интернет и повторите вход.'
+              : 'Ошибка соединения с базой данных.';
             errDiv.classList.remove('hidden');
             submitButton.disabled = false;
             submitButton.classList.remove('opacity-70');
