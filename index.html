@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="./tailwind.css">
   <script src="./supabase.min.js"></script>
   <script src="./lucide.min.js"></script>
-  <script src="./pdf.min.js"></script>
 
   <style>
     :root {
@@ -373,7 +372,7 @@
       const savedKey = localStorage.getItem(STUDENT_SESSION_KEY);
       if (!savedKey) return false;
       try {
-        const { data: keys, error } = await _supabase.from('access_keys').select('*').eq('key_value', savedKey);
+        const { data: keys, error } = await withTimeout(_supabase.from('access_keys').select('*').eq('key_value', savedKey));
         const student = keys?.[0];
         if (error || !student || student.status === 'Не активен' || isKeyExpired(student.expires_at)) {
           clearStudentSession();
@@ -476,11 +475,15 @@
       }, { passive: true });
     }
 
-    function withTimeout(promise, milliseconds = 15000) {
+    const NETWORK_TIMEOUT = 6000;
+    function withTimeout(promise, milliseconds = NETWORK_TIMEOUT) {
       return Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Превышено время ожидания ответа базы данных.')), milliseconds))
       ]);
+    }
+    function safeQuery(promise, milliseconds = NETWORK_TIMEOUT) {
+      return withTimeout(promise, milliseconds).catch(error => ({ data: null, error }));
     }
 
         function renderFavoritesView(lectures, targetContainer, bindLectureActions) {
@@ -644,9 +647,9 @@
     }
     async function loadEventsData() {
       const [{ data: events }, { data: registrations }, { data: registrationCounts }] = await Promise.all([
-        _supabase.from('events').select('*').eq('is_published', true).order('starts_at', { ascending: true }),
-        _supabase.from('event_registrations').select('*').eq('student_id', currentStudent?.id),
-        _supabase.from('event_registrations').select('id,event_id')
+        safeQuery(_supabase.from('events').select('*').eq('is_published', true).order('starts_at', { ascending: true })),
+        safeQuery(_supabase.from('event_registrations').select('*').eq('student_id', currentStudent?.id)),
+        safeQuery(_supabase.from('event_registrations').select('id,event_id'))
       ]);
       studentEvents = Array.isArray(events) ? events : [];
       allEventRegistrations = Array.isArray(registrationCounts) ? registrationCounts : [];
@@ -833,8 +836,8 @@
 
     async function loadAdminEventsData() {
       const [{ data: events }, { data: registrations }] = await Promise.all([
-        _supabase.from('events').select('*').order('starts_at', { ascending: true }),
-        _supabase.from('event_registrations').select('*').order('created_at', { ascending: false })
+        safeQuery(_supabase.from('events').select('*').order('starts_at', { ascending: true })),
+        safeQuery(_supabase.from('event_registrations').select('*').order('created_at', { ascending: false }))
       ]);
       return { events: Array.isArray(events) ? events : [], registrations: Array.isArray(registrations) ? registrations : [] };
     }
@@ -945,7 +948,7 @@
           }
 
           try {
-            const { data: keys, error } = await _supabase.from('access_keys').select('*').eq('key_value', keyInput);
+            const { data: keys, error } = await withTimeout(_supabase.from('access_keys').select('*').eq('key_value', keyInput));
             if (error) throw error;
 
             if (keys && keys.length > 0) {
@@ -987,8 +990,8 @@
       }
       else if (currentScreen === 'student') {
         const [subjectsResult, lecturesResult] = await Promise.all([
-          _supabase.from('subjects').select('*').order('name'),
-          _supabase.from('lectures').select('*').order('created_at', { ascending: false }),
+          safeQuery(_supabase.from('subjects').select('*').order('name')),
+          safeQuery(_supabase.from('lectures').select('*').order('created_at', { ascending: false })),
           loadEventsData()
         ]);
         const { data: subjects } = subjectsResult;
@@ -1138,9 +1141,9 @@
       }
       else if (currentScreen === 'admin') {
         const [keysResult, subjectsResult, lecturesResult, adminEventsData] = await Promise.all([
-          _supabase.from('access_keys').select('*').order('created_at', { ascending: false }),
-          _supabase.from('subjects').select('*').order('name'),
-          _supabase.from('lectures').select('*').order('created_at', { ascending: false }),
+          safeQuery(_supabase.from('access_keys').select('*').order('created_at', { ascending: false })),
+          safeQuery(_supabase.from('subjects').select('*').order('name')),
+          safeQuery(_supabase.from('lectures').select('*').order('created_at', { ascending: false })),
           loadAdminEventsData()
         ]);
         const { data: keys } = keysResult;
@@ -1382,14 +1385,24 @@
       return layer;
     }
 
+    let pdfJsLoadPromise = null;
+    function ensurePdfJs() {
+      if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+      if (pdfJsLoadPromise) return pdfJsLoadPromise;
+      pdfJsLoadPromise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = './pdf.min.js';
+        script.onload = () => resolve(window.pdfjsLib);
+        script.onerror = () => reject(new Error('Не удалось загрузить просмотрщик PDF.'));
+        document.head.appendChild(script);
+      });
+      return pdfJsLoadPromise;
+    }
     async function renderPdfInline(pdfUrl) {
       const area = document.getElementById('pdf-pages');
       if (!area) return;
-      if (!window.pdfjsLib) {
-        area.innerHTML = '<div class="p-6 text-red-300">Не удалось загрузить просмотрщик PDF. Используйте «Открыть отдельно».</div>';
-        return;
-      }
       try {
+        await ensurePdfJs();
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.js';
         const pdf = await window.pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise;
         const status = document.createElement('div');
