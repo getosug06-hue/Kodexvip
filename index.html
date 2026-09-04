@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Архив Юристов — Закрытый образовательный портал</title>
-  
+
   <link rel="preconnect" href="https://googleapis.com">
   <link rel="preconnect" href="https://gstatic.com" crossorigin>
   <link href="https://googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" rel="stylesheet">
@@ -45,8 +45,8 @@
       content: "";
       position: fixed;
       inset: 0;
-      background: radial-gradient(circle at 50% 20%, rgba(197,168,128,0.05) 0%, transparent 50%), 
-                  linear-gradient(rgba(255,255,255,0.005) 1px, transparent 1px), 
+      background: radial-gradient(circle at 50% 20%, rgba(197,168,128,0.05) 0%, transparent 50%),
+                  linear-gradient(rgba(255,255,255,0.005) 1px, transparent 1px),
                   linear-gradient(90deg, rgba(255,255,255,0.005) 1px, transparent 1px);
       background-size: 100% 100%, 50px 50px, 50px 50px;
       z-index: 1;
@@ -57,7 +57,7 @@
     .sparks { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
     .spark { position: absolute; left: var(--left); bottom: -5%; width: var(--size); height: var(--size); border-radius: 50%; background: radial-gradient(circle, #fffdf5 0%, #f4d79f 35%, var(--gold) 58%, rgba(197,168,128,0) 78%); box-shadow: 0 0 10px 3px rgba(223,190,145,0.82); opacity: 0; animation: sparkRise var(--duration) ease-in-out infinite; animation-delay: var(--delay); filter: brightness(1.25); }
     @keyframes sparkRise { 0%{transform:translate(0,0) scale(0.5);opacity:0;} 8%{opacity:0.9;} 100%{transform:translate(var(--drift),-80vh) scale(0.3);opacity:0;} }
-    
+
     .viewer-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; justify-content: center; align-items: center; padding: 20px; backdrop-filter: blur(8px); }
     .viewer-content { background: var(--bg-card); border: 1px solid var(--border-gold); width: 100%; max-width: 1000px; height: 85vh; border-radius: 8px; display: flex; flex-direction: column; }
     .viewer-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-b: 1px solid var(--border-gold); }
@@ -537,6 +537,173 @@
       updateNotificationsBadge();
     }
 
+    let studentEvents = [];
+    let studentEventRegistrations = [];
+    let allEventRegistrations = [];
+    let activeStudentEvent = null;
+    let eventSortMode = 'soonest';
+
+    const EVENT_TYPES = ['Сессии', 'Учебная практика', 'Производственная практика'];
+    const EVENT_STATUS_READY = 'Готов';
+    const EVENT_STATUS_PROCESSING = 'В процессе...';
+
+    function eventDate(value) {
+      if (!value) return '—';
+      return new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString('ru-RU');
+    }
+    function eventTypeIcon(type) {
+      return type === 'Сессии' ? 'graduation-cap' : type === 'Учебная практика' ? 'book-open-check' : 'briefcase-business';
+    }
+    function getEventUnreadStorageKey() { return `archive_event_notifications_${currentStudent?.id || 'guest'}`; }
+    function getReadEventNotificationIds() {
+      try { return JSON.parse(localStorage.getItem(getEventUnreadStorageKey()) || '[]').map(String); } catch { return []; }
+    }
+    function markEventNotificationRead(id) {
+      const next = Array.from(new Set([...getReadEventNotificationIds(), String(id)]));
+      localStorage.setItem(getEventUnreadStorageKey(), JSON.stringify(next));
+      updateEventNotificationsBadge();
+    }
+    function getEventNotifications() {
+      const read = new Set(getReadEventNotificationIds());
+      const createdAfter = currentStudent?.created_at ? new Date(currentStudent.created_at).getTime() : 0;
+      const notices = [];
+      studentEvents.forEach(event => {
+        const eventTime = new Date(event.created_at || 0).getTime();
+        const count = studentEventRegistrations.filter(r => String(r.event_id) === String(event.id)).length;
+        if (eventTime > createdAfter) notices.push({ id: `new-${event.id}`, eventId: event.id, title: `Новый ивент: ${event.title}`, text: `${event.event_type} • ${eventDate(event.starts_at)}`, kind: 'new' });
+        if (event.updated_at && new Date(event.updated_at).getTime() > createdAfter && count < Number(event.max_participants)) notices.push({ id: `slots-${event.id}-${event.updated_at}`, eventId: event.id, title: `Появились места: ${event.title}`, text: `Свободно мест: ${Math.max(0, Number(event.max_participants) - count)}`, kind: 'slots' });
+      });
+      studentEventRegistrations.filter(r => r.status === EVENT_STATUS_READY).forEach(registration => {
+        const event = studentEvents.find(item => String(item.id) === String(registration.event_id));
+        if (event) notices.push({ id: `ready-${registration.id}-${registration.updated_at}`, eventId: event.id, registrationId: registration.id, title: `Ивент готов: ${event.title}`, text: 'Результат и комментарий доступны в личном кабинете', kind: 'ready' });
+      });
+      return notices.filter(item => !read.has(String(item.id)));
+    }
+    function updateEventNotificationsBadge() {
+      const badge = document.getElementById('event-notifications-badge');
+      if (!badge) return;
+      const count = getEventNotifications().length;
+      badge.textContent = count > 99 ? '99+' : String(count);
+      badge.classList.toggle('hidden', count === 0);
+    }
+    function closeEventNotificationsPanel() { document.getElementById('event-notifications-panel')?.remove(); }
+    function renderEventNotificationsPanel() {
+      closeEventNotificationsPanel();
+      const notifications = getEventNotifications();
+      const panel = document.createElement('div');
+      panel.id = 'event-notifications-panel';
+      panel.className = 'fixed top-20 right-6 z-[120] w-[min(440px,calc(100vw-32px))] max-h-[70vh] overflow-y-auto bg-[#121216] border border-yellow-500/50 rounded-lg shadow-2xl p-4';
+      panel.innerHTML = `<div class="flex items-center justify-between gap-3 mb-3"><h3 class="text-lg font-bold text-yellow-300">Ивенты</h3><button id="close-event-notifications-btn" type="button" class="text-gray-400 hover:text-white text-xl">×</button></div>${notifications.length ? notifications.map(item => `<button type="button" class="event-notification-btn w-full text-left bg-[#18181f] hover:border-yellow-400 border border-white/10 rounded p-3 mb-2 transition" data-event-id="${item.eventId}" data-notification-id="${item.id}"><div class="text-white text-sm font-medium">${item.title}</div><div class="text-xs text-gray-400 mt-1">${item.text}</div></button>`).join('') : '<div class="text-gray-500 text-sm italic py-3">Новых уведомлений об ивентах нет.</div>'}`;
+      document.body.appendChild(panel);
+      document.getElementById('close-event-notifications-btn')?.addEventListener('click', closeEventNotificationsPanel);
+      panel.querySelectorAll('.event-notification-btn').forEach(button => button.addEventListener('click', async () => {
+        markEventNotificationRead(button.dataset.notificationId); closeEventNotificationsPanel();
+        const event = studentEvents.find(item => String(item.id) === String(button.dataset.eventId));
+        if (event) await showStudentEventDetails(event);
+      }));
+    }
+    async function loadEventsData() {
+      const [{ data: events }, { data: registrations }] = await Promise.all([
+        _supabase.from('events').select('*').eq('is_published', true).order('starts_at', { ascending: true }),
+        _supabase.from('event_registrations').select('*')
+      ]);
+      studentEvents = Array.isArray(events) ? events : [];
+      allEventRegistrations = Array.isArray(registrations) ? registrations : [];
+      studentEventRegistrations = allEventRegistrations.filter(item => String(item.student_id) === String(currentStudent?.id));
+      studentEvents._counts = Object.fromEntries(studentEvents.map(event => [event.id, allEventRegistrations.filter(item => String(item.event_id) === String(event.id)).length]));
+    }
+    function eventFormFields(type, registration = null) {
+      const data = registration?.form_data || {};
+      if (type === 'Сессии') return `<label class="block text-xs text-[#c5a880] mb-1.5">Email на другой площадке<input id="event-form-email" type="email" value="${data.email || ''}" class="w-full mt-1 p-2.5 bg-[#18181f] border border-white/10 rounded text-white" required></label><label class="block text-xs text-[#c5a880] mb-1.5">Пароль от личного кабинета<input id="event-form-password" type="text" value="${data.password || ''}" class="w-full mt-1 p-2.5 bg-[#18181f] border border-white/10 rounded text-white" required></label>`;
+      return `<label class="block text-xs text-[#c5a880] mb-1.5">Желаемая оценка<input id="event-form-grade" type="text" value="${data.grade || ''}" class="w-full mt-1 p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="Например, 5" required></label><label class="block text-xs text-[#c5a880] mb-1.5">Ссылка на VK<input id="event-form-vk" type="url" value="${data.vk || ''}" class="w-full mt-1 p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="https://vk.com/..." required></label>`;
+    }
+    function collectEventForm(type) {
+      if (type === 'Сессии') return { email: document.getElementById('event-form-email').value.trim(), password: document.getElementById('event-form-password').value.trim() };
+      return { grade: document.getElementById('event-form-grade').value.trim(), vk: document.getElementById('event-form-vk').value.trim() };
+    }
+    function renderEventDetailsModal(event, registration = null) {
+      document.getElementById('event-details-modal')?.remove();
+      const capacity = Number(event.max_participants || 0);
+      const taken = studentEvents._counts?.[event.id] ?? studentEventRegistrations.filter(r => String(r.event_id) === String(event.id)).length;
+      const isRegistered = Boolean(registration);
+      const available = Math.max(0, capacity - taken);
+      const modal = document.createElement('div'); modal.id = 'event-details-modal'; modal.className = 'viewer-modal';
+      const readyMarkup = registration && registration.status === EVENT_STATUS_READY ? '<div class="mt-3 text-sm text-gray-300">' + (registration.admin_comment || 'Комментарий не добавлен.') + '</div>' + (registration.attachment_url ? '<div class="mt-4 flex gap-2 flex-wrap"><button id="view-event-result" class="px-4 py-2 rounded bg-[#c5a880] text-black text-sm font-semibold">Просмотреть результат</button><a href="' + registration.attachment_url + '" download class="px-4 py-2 rounded border border-[#c5a880] text-[#c5a880] text-sm">Скачать файл</a></div>' : '') : '';
+      const registrationMarkup = isRegistered ? '<div class="rounded border border-white/10 p-4"><div class="text-sm ' + (registration.status === EVENT_STATUS_READY ? 'text-green-400' : 'text-orange-400') + ' font-semibold">Статус: ' + registration.status + '</div>' + readyMarkup + '</div>' : '';
+      modal.innerHTML = '<div class="viewer-content max-w-[700px] h-auto max-h-[90vh] overflow-y-auto"><div class="viewer-header"><h3 class="text-lg font-bold text-[#c5a880]">' + event.title + '</h3><button id="close-event-modal" class="text-gray-400 hover:text-white text-xl">×</button></div><div class="p-6 space-y-4"><div class="text-xs text-gray-400">' + event.event_type + ' • ' + eventDate(event.starts_at) + ' — ' + eventDate(event.ends_at) + '</div><p class="text-sm text-gray-300 whitespace-pre-wrap">' + (event.description || 'Описание не добавлено.') + '</p><div class="text-sm ' + (available ? 'text-green-400' : 'text-red-400') + '">' + (available ? 'Свободно мест: ' + available + ' из ' + capacity : 'Мест больше нет') + '</div>' + registrationMarkup + '<form id="event-registration-form" class="space-y-3"><h4 class="text-[#c5a880] font-semibold">' + (isRegistered ? 'Изменить данные записи' : 'Записаться на ивент') + '</h4>' + eventFormFields(event.event_type, registration) + '<button type="submit" class="w-full p-3 bg-[#c5a880] text-black font-semibold rounded" ' + (!isRegistered && !available ? 'disabled' : '') + '>' + (isRegistered ? 'Сохранить данные' : 'Записаться') + '</button></form></div></div>';
+      document.body.appendChild(modal); if (window.lucide?.createIcons) window.lucide.createIcons();
+      document.getElementById('close-event-modal').addEventListener('click', () => modal.remove());
+      document.getElementById('event-registration-form').addEventListener('submit', async e => {
+        e.preventDefault(); const formData = collectEventForm(event.event_type); const button = e.currentTarget.querySelector('button[type="submit"]'); button.disabled = true; button.textContent = 'Сохранение…';
+        let result;
+        if (registration) result = await _supabase.from('event_registrations').update({ form_data: formData }).eq('id', registration.id);
+        else result = await _supabase.rpc('register_for_event', { p_event_id: event.id, p_student_id: currentStudent.id, p_form_data: formData });
+        if (result.error) { alert(result.error.message || 'Не удалось сохранить запись.'); button.disabled = false; button.textContent = isRegistered ? 'Сохранить данные' : 'Записаться'; return; }
+        modal.remove(); await renderApp();
+      });
+      document.getElementById('view-event-result')?.addEventListener('click', () => openEventResultViewer(event, registration));
+    }
+    function renderStudentEvents() {
+      const target = document.getElementById('events-container');
+      if (!target) return;
+      if (!studentEvents.length) { target.innerHTML = '<div class="col-span-full text-gray-500 italic">Ивентов пока нету.</div>'; return; }
+      const sorted = [...studentEvents].sort((a, b) => eventSortMode === 'latest' ? new Date(b.starts_at) - new Date(a.starts_at) : new Date(a.starts_at) - new Date(b.starts_at));
+      target.innerHTML = sorted.map(event => {
+        const taken = studentEvents._counts?.[event.id] || 0;
+        const max = Number(event.max_participants || 0); const available = Math.max(0, max - taken);
+        const registration = studentEventRegistrations.find(item => String(item.event_id) === String(event.id));
+        const full = available === 0 && !registration;
+        const lock = full ? '<i data-lucide="lock" class="w-4 h-4 text-red-400"></i>' : '<i data-lucide="lock-open" class="w-4 h-4 text-green-400"></i>';
+        const state = registration ? `<span class="text-xs ${registration.status === EVENT_STATUS_READY ? 'text-green-400' : 'text-orange-400'}">${registration.status}</span>` : `<span class="text-xs ${full ? 'text-red-400' : 'text-green-400'}">${full ? 'Мест нет' : `Свободно: ${available}`}</span>`;
+        return `<button type="button" class="student-event-card text-left bg-[#18181f] border border-yellow-500/20 hover:border-yellow-400 rounded-lg p-4 transition" data-event-id="${event.id}"><div class="flex items-start justify-between gap-3"><div class="flex items-center gap-2 text-yellow-300 font-semibold"><i data-lucide="${eventTypeIcon(event.event_type)}" class="w-4 h-4"></i>${event.event_type}</div><div class="flex items-center gap-1">${lock}</div></div><div class="mt-3 text-white font-medium">${event.title}</div><div class="mt-1 text-xs text-gray-400">${eventDate(event.starts_at)} — ${eventDate(event.ends_at)}</div><div class="mt-3 flex justify-between items-center">${state}<span class="text-xs text-gray-500">Подробнее →</span></div></button>`;
+      }).join('');
+      target.querySelectorAll('.student-event-card').forEach(card => card.addEventListener('click', () => { const event = studentEvents.find(item => String(item.id) === String(card.dataset.eventId)); if (event) showStudentEventDetails(event); }));
+      if (window.lucide?.createIcons) window.lucide.createIcons();
+    }
+    function handlePendingEvent() {
+      const eventId = new URLSearchParams(window.location.search).get('event');
+      if (!eventId) return;
+      const event = studentEvents.find(item => String(item.id) === String(eventId));
+      if (!event) return;
+      history.replaceState({}, document.title, window.location.pathname);
+      showStudentEventDetails(event);
+    }
+    async function showStudentEventDetails(event) {
+      const registration = studentEventRegistrations.find(item => String(item.event_id) === String(event.id));
+      renderEventDetailsModal(event, registration);
+    }
+    function openEventResultViewer(event, registration) {
+      const modal = document.createElement('div'); modal.className = 'viewer-modal'; modal.id = 'event-result-viewer';
+      const isPdf = /\.pdf($|\?)/i.test(registration.attachment_url || '') || /pdf/i.test(registration.attachment_name || '');
+      modal.innerHTML = `<div class="viewer-content"><div class="viewer-header"><h3 class="text-lg font-bold text-[#c5a880]">${event.title}</h3><div class="flex gap-3"><a href="${registration.attachment_url}" download class="text-xs text-[#c5a880]">Скачать</a><button id="close-event-result" class="text-gray-400 text-xl">×</button></div></div><div class="viewer-body bg-black">${isPdf ? `<iframe src="${registration.attachment_url}" class="w-full h-full border-0" title="Результат"></iframe>` : `<img src="${registration.attachment_url}" class="max-w-full max-h-full object-contain mx-auto" alt="Результат">`}</div></div>`;
+      document.body.appendChild(modal); document.getElementById('close-event-result').addEventListener('click', () => modal.remove());
+    }
+
+    async function loadAdminEventsData() {
+      const [{ data: events }, { data: registrations }] = await Promise.all([
+        _supabase.from('events').select('*').order('starts_at', { ascending: true }),
+        _supabase.from('event_registrations').select('*').order('created_at', { ascending: false })
+      ]);
+      return { events: Array.isArray(events) ? events : [], registrations: Array.isArray(registrations) ? registrations : [] };
+    }
+    function renderAdminEvents(events, registrations) {
+      const area = document.getElementById('admin-events-list'); if (!area) return;
+      area.innerHTML = events.length ? events.map(event => {
+        const regs = registrations.filter(r => String(r.event_id) === String(event.id));
+        return `<div class="bg-[#18181f] border border-yellow-500/20 rounded-lg p-4 mb-3"><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="text-yellow-300 text-xs">${event.event_type}</div><div class="text-white font-semibold">${event.title}</div><div class="text-xs text-gray-400 mt-1">${eventDate(event.starts_at)} — ${eventDate(event.ends_at)} • Записано: ${regs.length}/${event.max_participants}</div></div><button type="button" class="delete-event-btn text-red-400 text-xl" data-id="${event.id}" data-title="${event.title}">×</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3"><input class="admin-event-date p-2 bg-[#121216] border border-white/10 rounded text-white text-xs" type="date" data-field="starts_at" data-id="${event.id}" value="${String(event.starts_at).slice(0,10)}"><input class="admin-event-date p-2 bg-[#121216] border border-white/10 rounded text-white text-xs" type="date" data-field="ends_at" data-id="${event.id}" value="${String(event.ends_at).slice(0,10)}"><input class="admin-event-capacity p-2 bg-[#121216] border border-white/10 rounded text-white text-xs" type="number" min="${Math.max(1, regs.length)}" data-id="${event.id}" value="${event.max_participants}"></div><button type="button" class="save-event-btn mt-2 px-3 py-1.5 border border-yellow-500/50 text-yellow-300 rounded text-xs" data-id="${event.id}">Сохранить параметры</button><div class="mt-3 space-y-2">${regs.length ? regs.map(reg => { const student = (window.adminKeys || []).find(k => String(k.id) === String(reg.student_id)); const form = reg.form_data || {}; return `<div class="border-t border-white/10 pt-3"><div class="flex flex-wrap justify-between gap-2 text-sm"><span class="text-white font-medium">${student?.student_name || `Студент #${reg.student_id}`}</span><span class="text-xs ${reg.status === EVENT_STATUS_READY ? 'text-green-400' : 'text-orange-400'}">${reg.status}</span></div><div class="text-xs text-gray-400 mt-1">${event.event_type === 'Сессии' ? `Email: ${form.email || '—'} • Пароль: ${form.password || '—'}` : `Оценка: ${form.grade || '—'} • VK: ${form.vk || '—'}`}</div><div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2"><select class="admin-registration-status p-2 bg-[#121216] border border-white/10 rounded text-white text-xs" data-id="${reg.id}"><option ${reg.status === EVENT_STATUS_PROCESSING ? 'selected' : ''}>${EVENT_STATUS_PROCESSING}</option><option ${reg.status === EVENT_STATUS_READY ? 'selected' : ''}>${EVENT_STATUS_READY}</option></select><input class="admin-registration-comment p-2 bg-[#121216] border border-white/10 rounded text-white text-xs" data-id="${reg.id}" value="${reg.admin_comment || ''}" placeholder="Комментарий студенту"><label class="text-xs text-gray-400 border border-white/10 rounded p-2">Файл результата<input type="file" class="admin-registration-file mt-1 w-full text-xs" data-id="${reg.id}" accept="${event.event_type === 'Сессии' ? 'image/*' : '.pdf,application/pdf'}"></label></div><button type="button" class="save-registration-btn mt-2 px-3 py-1.5 bg-[#c5a880] text-black rounded text-xs font-semibold" data-id="${reg.id}" data-event-type="${event.event_type}">Сохранить запись</button>${reg.attachment_name ? `<span class="text-xs text-gray-500 ml-2">Файл: ${reg.attachment_name}</span>` : ''}</div>`; }).join('') : '<div class="text-xs text-gray-500 italic mt-3">Студенты ещё не записались.</div>'}</div></div>`;
+      }).join('') : '<div class="text-gray-500 italic">Ивентов пока нету.</div>';
+      area.querySelectorAll('.save-event-btn').forEach(button => button.addEventListener('click', async () => {
+        const id = button.dataset.id; const starts_at = area.querySelector(`[data-field="starts_at"][data-id="${id}"]`).value; const ends_at = area.querySelector(`[data-field="ends_at"][data-id="${id}"]`).value; const max_participants = Number(area.querySelector(`.admin-event-capacity[data-id="${id}"]`).value); const { error } = await _supabase.from('events').update({ starts_at, ends_at, max_participants }).eq('id', id); if (error) alert(error.message); else { alert('Параметры ивента сохранены.'); renderApp(); }
+      }));
+      area.querySelectorAll('.delete-event-btn').forEach(button => button.addEventListener('click', async () => { if (!confirm(`Удалить ивент «${button.dataset.title}» вместе с записями?`)) return; const { error } = await _supabase.from('events').delete().eq('id', button.dataset.id); if (error) alert(error.message); else renderApp(); }));
+      area.querySelectorAll('.save-registration-btn').forEach(button => button.addEventListener('click', async () => {
+        const id = button.dataset.id; const status = area.querySelector(`.admin-registration-status[data-id="${id}"]`).value; const admin_comment = area.querySelector(`.admin-registration-comment[data-id="${id}"]`).value.trim(); const file = area.querySelector(`.admin-registration-file[data-id="${id}"]`).files[0]; const payload = { status, admin_comment };
+        if (file) { const path = `events/${id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`; const upload = await _supabase.storage.from('event-results').upload(path, file, { upsert: true }); if (upload.error) { alert(`Не удалось загрузить файл: ${upload.error.message}`); return; } const pub = _supabase.storage.from('event-results').getPublicUrl(path); payload.attachment_url = pub.data.publicUrl; payload.attachment_name = file.name; payload.attachment_path = path; }
+        const { error } = await _supabase.from('event_registrations').update(payload).eq('id', id); if (error) alert(error.message); else { alert('Запись студента обновлена.'); renderApp(); }
+      }));
+      if (window.lucide?.createIcons) window.lucide.createIcons();
+    }
+
     async function renderApp() {
 
       const container = document.getElementById('screen-content');
@@ -563,7 +730,7 @@
             </div>
           </div>
         `;
-        
+
         document.getElementById('auth-form').addEventListener('submit', async (e) => {
           e.preventDefault();
           const keyInput = document.getElementById('auth-key').value.trim();
@@ -602,7 +769,7 @@
                 submitButton.innerHTML = 'Получить доступ';
                 return;
               }
-              
+
               const ip = await fetchUserIP();
               if (k.bound_ip && k.bound_ip !== ip) {
                 errDiv.innerText = 'Этот ключ привязан к другому устройству. Вход с этого IP невозможен.';
@@ -648,10 +815,11 @@
         const { data: subjects } = await _supabase.from('subjects').select('*').order('name');
         const { data: lectures } = await _supabase.from('lectures').select('*').order('created_at', { ascending: false });
         studentLectures = Array.isArray(lectures) ? lectures : [];
+        await loadEventsData();
         const studentActive = currentStudent?.status !== 'Не активен' && !isKeyExpired(currentStudent?.expires_at);
         const studentStatusLabel = studentActive ? '✓ Подписка активна' : '✕ Подписка неактивна';
         const studentStatusClass = studentActive ? 'text-green-400' : 'text-red-400';
-        
+
         container.innerHTML = `
           <div class="max-w-[1300px] w-full mx-auto p-6 flex-grow flex flex-col">
                         <header class="student-header flex justify-between items-center border-b border-[rgba(197,168,128,0.15)] pb-5 mb-8">
@@ -664,7 +832,8 @@
               </div>
               <div class="student-header-actions flex items-center gap-3">
                 <button id="favorites-btn" class="bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-4 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition flex items-center gap-2"><span class="text-lg leading-none">♥</span> Избранное</button>
-                <button id="notifications-btn" type="button" class="relative bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-3 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition" aria-label="Уведомления"><i data-lucide="bell" class="w-5 h-5"></i><span id="notifications-badge" class="hidden absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] leading-5 font-bold text-center">0</span></button>
+                <button id="notifications-btn" type="button" class="relative bg-transparent border border-[#c5a880] text-[#c5a880] py-2 px-3 text-sm rounded-md hover:bg-[#c5a880] hover:text-black transition" aria-label="Уведомления о материалах"><i data-lucide="bell" class="w-5 h-5"></i><span id="notifications-badge" class="hidden absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] leading-5 font-bold text-center">0</span></button>
+                <button id="event-notifications-btn" type="button" class="relative bg-transparent border border-yellow-500/70 text-yellow-300 py-2 px-3 text-sm rounded-md hover:bg-yellow-400 hover:text-black transition" aria-label="Уведомления об ивентах"><i data-lucide="calendar-days" class="w-5 h-5"></i><span id="event-notifications-badge" class="hidden absolute -top-2 -right-2 min-w-[20px] h-5 px-1 rounded-full bg-yellow-400 text-black text-[11px] leading-5 font-bold text-center">0</span></button>
                 <button id="enable-push-btn" type="button" class="bg-transparent border border-[#c5a880]/60 text-[#c5a880] py-2 px-3 text-xs rounded-md hover:bg-[#c5a880] hover:text-black transition">Включить push</button>
                 <button id="logout-btn" class="bg-transparent border border-white/20 text-white py-2 px-5 text-sm rounded-md hover:bg-white/5 hover:border-white transition flex items-center gap-2"><i data-lucide="log-out" class="w-4 h-4"></i> Выйти</button>
               </div>
@@ -683,6 +852,7 @@
               <div><span class="bg-white/5 px-2 py-1 rounded text-sm font-mono border border-white/10">${currentStudent?.key_value}</span></div>
             </div>
 
+            <section class="mb-8 bg-[#121216] border border-yellow-500/25 rounded-lg p-5 shadow-lg"><div class="flex flex-wrap items-center justify-between gap-3 mb-4"><h3 class="text-xl font-bold text-yellow-300 flex items-center gap-2.5"><i data-lucide="calendar-days" class="w-5 h-5"></i> Ивенты</h3><span class="text-xs text-gray-500">Сессии • Учебная практика • Производственная практика</span></div><div id="events-container" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div></section>
             <div class="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-8">
               <div>
                 <h3 class="text-xl font-bold text-[#c5a880] mb-4 pb-2 border-b border-[rgba(197,168,128,0.15)] flex items-center gap-2.5"><i data-lucide="book-open" class="w-5 h-5"></i> Дисциплины</h3>
@@ -712,13 +882,17 @@
         });
 
         document.getElementById('notifications-btn').addEventListener('click', renderNotificationsPanel);
+        document.getElementById('event-notifications-btn').addEventListener('click', renderEventNotificationsPanel);
         document.getElementById('enable-push-btn').addEventListener('click', enablePushNotifications);
         if (!('Notification' in window) || Notification.permission === 'granted') {
           const pushButton = document.getElementById('enable-push-btn');
           if (pushButton && Notification.permission === 'granted') { pushButton.textContent = 'Уведомления разрешены'; }
         }
         updateNotificationsBadge();
+        updateEventNotificationsBadge();
+        renderStudentEvents();
         handlePendingLecture(lectures);
+        handlePendingEvent();
 
         document.getElementById('favorites-btn').addEventListener('click', () => {
           closeNotificationsPanel();
@@ -781,6 +955,8 @@
         const { data: keys } = await _supabase.from('access_keys').select('*').order('created_at', { ascending: false });
         const { data: subjects } = await _supabase.from('subjects').select('*').order('name');
         const { data: adminLectures } = await _supabase.from('lectures').select('*').order('created_at', { ascending: false });
+        const adminEventsData = await loadAdminEventsData();
+        window.adminKeys = Array.isArray(keys) ? keys : [];
         const isKeyActive = k => k.status !== 'Не активен' && !isKeyExpired(k.expires_at);
         const keyPage = getAdminPage(keys, 'keys');
         const subjectPage = getAdminPage(subjects, 'subjects');
@@ -792,6 +968,7 @@
               <div class="flex items-center gap-4"><div class="w-12 h-12 flex items-center justify-center rounded-full border border-[rgba(197,168,128,0.15)] text-[#c5a880]"><i data-lucide="scale" class="w-6 h-6"></i></div><h2 class="text-2xl font-bold tracking-wide">Управление Архивом</h2></div>
               <button id="admin-logout-btn" class="bg-transparent border border-white/20 text-white py-2 px-5 text-sm rounded-md hover:bg-white/5 transition flex items-center gap-2"><i data-lucide="log-out" class="w-4 h-4"></i> Выйти</button>
             </header>
+            <section class="mb-8 bg-[#121216] border border-yellow-500/25 rounded-lg p-6 shadow-xl"><h3 class="text-lg font-bold text-yellow-300 mb-4 pb-2 border-b border-white/5 flex items-center gap-2"><i data-lucide="calendar-days" class="w-5 h-5"></i> Управление Ивентами</h3><form id="create-event-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3"><input id="event-title" class="p-2.5 bg-[#18181f] border border-white/10 rounded text-white lg:col-span-2" placeholder="Название ивента" required><select id="event-type" class="p-2.5 bg-[#18181f] border border-white/10 rounded text-white"><option>Сессии</option><option>Учебная практика</option><option>Производственная практика</option></select><input id="event-start" type="date" class="p-2.5 bg-[#18181f] border border-white/10 rounded text-white" required><input id="event-end" type="date" class="p-2.5 bg-[#18181f] border border-white/10 rounded text-white" required><input id="event-capacity" type="number" min="1" class="p-2.5 bg-[#18181f] border border-white/10 rounded text-white" placeholder="Мест" required><button type="submit" class="p-2.5 bg-yellow-400 text-black font-semibold rounded">Создать</button><textarea id="event-description" class="p-2.5 bg-[#18181f] border border-white/10 rounded text-white md:col-span-2 lg:col-span-6" rows="2" placeholder="Описание ивента"></textarea></form><div id="admin-events-list" class="mt-5 max-h-[720px] overflow-y-auto"></div></section>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div class="bg-[#121216] border border-[rgba(197,168,128,0.15)] rounded-lg p-6 shadow-xl">
                 <h3 class="text-lg font-bold text-[#c5a880] mb-4 pb-2 border-b border-white/5 flex items-center gap-2"><i data-lucide="key-round" class="w-4 h-4"></i> Выдать новый доступ</h3>
@@ -834,6 +1011,8 @@
         `;
 
         document.getElementById('admin-logout-btn').addEventListener('click', () => { stopAccessMonitor(); currentScreen = 'auth'; currentStudent = null; renderApp(); });
+        renderAdminEvents(adminEventsData.events, adminEventsData.registrations);
+        document.getElementById('create-event-form').addEventListener('submit', async e => { e.preventDefault(); const payload = { title: document.getElementById('event-title').value.trim(), event_type: document.getElementById('event-type').value, starts_at: document.getElementById('event-start').value, ends_at: document.getElementById('event-end').value, max_participants: Number(document.getElementById('event-capacity').value), description: document.getElementById('event-description').value.trim(), is_published: true }; if (payload.ends_at < payload.starts_at) { alert('Дата окончания не может быть раньше даты начала.'); return; } const { error } = await _supabase.from('events').insert([payload]); if (error) alert(error.message); else { alert('Ивент создан.'); renderApp(); } });
 
         document.querySelectorAll('.admin-page-btn').forEach(button => {
           button.addEventListener('click', () => {
