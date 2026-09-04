@@ -68,7 +68,6 @@
     .pdf-page-watermark.bottom-right { right: 18px; bottom: 16px; transform: rotate(-14deg); }
     .viewer-body iframe { width: 100%; height: 100%; border: none; }
     .viewer-watermark { position: absolute; inset: 0; pointer-events: none; z-index: 5; display: flex; flex-wrap: wrap; gap: 60px; align-content: center; justify-content: center; opacity: 0.10; color: var(--gold); font-size: 1.1rem; font-weight: 600; transform: rotate(-28deg); overflow: hidden; user-select: none; }
-    .screenshot-warning { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,74,74,0.95); color: #fff; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; z-index: 150; display: flex; align-items: center; gap: 8px; box-shadow: 0 8px 30px rgba(255,74,74,0.4); }
     .favorite-toggle-btn { transition: transform 0.18s ease, color 0.18s ease, filter 0.18s ease; }
     .favorite-toggle-btn.favorite-pop { animation: favoritePop 0.5s ease both; }
     @keyframes favoritePop { 0% { transform: scale(1); } 35% { transform: scale(1.55) rotate(-8deg); filter: drop-shadow(0 0 10px rgba(223,190,145,0.9)); } 70% { transform: scale(0.88) rotate(5deg); } 100% { transform: scale(1); } }
@@ -1403,18 +1402,22 @@
           const page = await pdf.getPage(pageNumber);
           const rawViewport = page.getViewport({ scale: 1 });
           const availableWidth = Math.max(320, Math.min(area.clientWidth - 32, 900));
-          const scale = Math.min(1.35, availableWidth / rawViewport.width);
-          const viewport = page.getViewport({ scale });
+          const cssScale = Math.min(1.35, availableWidth / rawViewport.width);
+          const cssViewport = page.getViewport({ scale: cssScale });
+          const outputScale = Math.min(window.devicePixelRatio || 1, 3);
+          const renderViewport = page.getViewport({ scale: cssScale * outputScale });
           const pageShell = document.createElement('div');
           pageShell.className = 'pdf-page-shell';
           const canvas = document.createElement('canvas');
           canvas.className = 'block mx-auto shadow-xl max-w-full';
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
+          canvas.width = Math.ceil(renderViewport.width);
+          canvas.height = Math.ceil(renderViewport.height);
+          canvas.style.width = `${cssViewport.width}px`;
+          canvas.style.height = `${cssViewport.height}px`;
           pageShell.appendChild(canvas);
           pageShell.appendChild(createPageWatermark(watermarkText));
           area.appendChild(pageShell);
-          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport: renderViewport }).promise;
           status.textContent = `Страница ${pageNumber} из ${pdf.numPages}`;
           await new Promise(resolve => requestAnimationFrame(resolve));
         }
@@ -1461,7 +1464,6 @@
             ${isPdf ? '' : `<div class="viewer-watermark">${watermarkText}</div>`}
           </div>
         </div>
-        <div id="screenshot-alert" class="screenshot-warning hidden"><i data-lucide="shield-alert" class="w-[18px] h-[18px]"></i> Скриншоты запрещены!</div>
       `;
       document.body.appendChild(modal);
       if (window.lucide?.createIcons) window.lucide.createIcons();
@@ -1481,7 +1483,6 @@
       document.getElementById('close-viewer-btn').addEventListener('click', () => { modal.remove(); activeViewerLecture = null; });
     }
 
-    window.addEventListener('keyup', (e) => { if (e.key === 'PrintScreen') { navigator.clipboard?.writeText(''); const a = document.getElementById('screenshot-alert'); if (a) { a.classList.remove('hidden'); setTimeout(() => a.classList.add('hidden'), 2000); } } });
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     // Сначала сразу показываем форму входа. Медленный запрос к Supabase
     // не должен блокировать отображение интерфейса на мобильном интернете.
