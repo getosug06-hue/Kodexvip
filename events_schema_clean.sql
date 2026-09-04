@@ -17,7 +17,7 @@ create table if not exists public.event_registrations (
   event_id uuid not null references public.events(id) on delete cascade,
   student_id bigint not null references public.access_keys(id) on delete cascade,
   form_data jsonb not null default '{}'::jsonb,
-  status text not null default 'В процессе...' check (status in ('В процессе...', 'Готов')),
+  status text not null default 'Не оплачен' check (status in ('Не оплачен', 'В процессе...', 'Готов')),
   attachment_url text,
   attachment_name text,
   attachment_path text,
@@ -63,12 +63,18 @@ create policy events_public_write on public.events for all using (true) with che
 drop policy if exists event_registrations_public_all on public.event_registrations;
 create policy event_registrations_public_all on public.event_registrations for all using (true) with check (true);
 
-do $$ begin
-  insert into storage.buckets (id, name, public)
-  values ('event-results', 'event-results', true)
-  on conflict (id) do nothing;
-exception when others then null;
-end $$;
+insert into storage.buckets (id, name, public)
+values ('event-results', 'event-results', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists event_results_read_public on storage.objects;
+create policy event_results_read_public on storage.objects for select to public using (bucket_id = 'event-results');
+drop policy if exists event_results_insert_public on storage.objects;
+create policy event_results_insert_public on storage.objects for insert to public with check (bucket_id = 'event-results');
+drop policy if exists event_results_update_public on storage.objects;
+create policy event_results_update_public on storage.objects for update to public using (bucket_id = 'event-results') with check (bucket_id = 'event-results');
+drop policy if exists event_results_delete_public on storage.objects;
+create policy event_results_delete_public on storage.objects for delete to public using (bucket_id = 'event-results');
 
 create or replace function public.touch_events_updated_at()
 returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
