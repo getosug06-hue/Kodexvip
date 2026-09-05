@@ -164,6 +164,89 @@
       *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
       .cursor-trail-dot { display: none; }
     }
+
+    /* Event visual direction: editorial legal-tech imagery with seamless glitch edges. */
+    .events-hero-visual-image {
+      min-height: 430px;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        linear-gradient(90deg, rgba(7,5,12,.98) 0%, rgba(7,5,12,.72) 24%, rgba(7,5,12,.08) 68%, rgba(7,5,12,.28) 100%),
+        url('./assets/event-hero.webp') center right / cover no-repeat;
+      box-shadow: inset 42px 0 70px rgba(7,5,12,.88), inset -20px 0 60px rgba(7,5,12,.38);
+    }
+    .events-hero-visual-image::before,
+    .events-hero-visual-image::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .events-hero-visual-image::before {
+      background: repeating-linear-gradient(0deg, transparent 0 6px, rgba(159,92,255,.12) 7px, transparent 8px), linear-gradient(105deg, transparent 42%, rgba(130,73,255,.2) 63%, transparent 82%);
+      mix-blend-mode: screen;
+      opacity: .58;
+    }
+    .events-hero-visual-image::after {
+      background: linear-gradient(90deg, #07050c 0%, transparent 16%, transparent 84%, rgba(7,5,12,.8) 100%), radial-gradient(ellipse at 66% 50%, transparent 30%, rgba(7,5,12,.48) 100%);
+      z-index: 3;
+    }
+    .events-hero-visual-image .hero-scale { opacity: .08; z-index: 4; }
+    .events-hero-visual-image .hero-noise,
+    .events-hero-visual-image .hero-scan-line { z-index: 5; }
+    .events-card-art,
+    .past-event-art {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      background-color: #0a0711;
+      background-position: center;
+      background-size: cover;
+      background-repeat: no-repeat;
+    }
+    .events-card-art::before,
+    .past-event-art::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(90deg, rgba(8,6,12,.96) 0%, rgba(8,6,12,.52) 34%, rgba(8,6,12,.04) 76%, rgba(8,6,12,.35) 100%);
+    }
+    .events-card-art::after,
+    .past-event-art::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(0deg, transparent 0 7px, rgba(160,94,255,.15) 8px, transparent 9px), linear-gradient(110deg, transparent 48%, rgba(162,91,255,.16) 64%, transparent 84%);
+      mix-blend-mode: screen;
+      opacity: .7;
+    }
+    .events-card-art.event-visual-session,
+    .past-event-art.event-visual-session { background-image: url('./assets/event-session.webp'); }
+    .events-card-art.event-visual-study,
+    .past-event-art.event-visual-study { background-image: url('./assets/event-study-practice.webp'); }
+    .events-card-art.event-visual-production,
+    .past-event-art.event-visual-production { background-image: url('./assets/event-production-practice.webp'); }
+    .events-card-art > span,
+    .past-event-art > span { position: relative; z-index: 2; color: rgba(213,181,255,.38); text-shadow: 0 0 18px rgba(155,91,255,.72); }
+    .events-page-card:hover .events-card-art,
+    .past-event-card:hover .past-event-art { filter: saturate(1.12) brightness(1.12); }
+    .events-page-card:hover .events-card-art::after,
+    .past-event-card:hover .past-event-art::after { animation: eventImageGlitch .55s steps(2, end) both; }
+    @keyframes eventImageGlitch {
+      0% { transform: translate(0); opacity: .55; }
+      28% { transform: translate(7px,-2px); opacity: .9; }
+      54% { transform: translate(-5px,2px); opacity: .38; }
+      100% { transform: translate(0); opacity: .7; }
+    }
+    @media (max-width: 700px) {
+      .events-hero-visual-image { min-height: 260px; background-position: 67% center; }
+      .events-hero-visual-image::after { background: linear-gradient(90deg, rgba(7,5,12,.88), transparent 32%, rgba(7,5,12,.32)), linear-gradient(0deg, rgba(7,5,12,.4), transparent 58%); }
+      .events-card-art { min-height: 150px; background-position: 68% center; }
+      .past-event-art { height: 110px; }
+    }
   </style>
 </head>
 <body>
@@ -787,8 +870,9 @@
       const statusMeta = registration ? getEventStatusMeta(registration.status) : null;
       const pill = registration ? `<span class="event-page-pill ${statusMeta.pillClass}">${statusMeta.icon} ${statusMeta.label}</span>` : (full ? '<span class="event-page-pill full">Мест нет</span>' : '<span class="event-page-pill open">Открыта запись</span>');
       const art = event.event_type === 'Сессии' ? '⚖' : event.event_type === 'Учебная практика' ? '§' : '◈';
-      if (compact) return `<button type="button" class="past-event-card" data-event-id="${event.id}"><div class="past-event-art">${art}</div><div class="past-event-date">${eventDate(event.starts_at)}</div><div class="past-event-title">${event.title}</div><span>${event.event_type}</span></button>`;
-      return `<button type="button" class="events-page-card" data-event-id="${event.id}"><div class="events-card-date"><strong>${day}</strong><span>${month}</span><small>${dateParts[0] || ''}</small></div><div class="events-card-main"><div class="events-card-top"><span class="events-card-type">${event.event_type}</span><span class="events-card-bookmark">${full ? '🔒' : '◇'}</span></div><h3>${event.title}</h3><p>${event.description || 'Событие для студентов Архива Юристов.'}</p><div class="events-card-meta"><span>◷ В течение дня</span><span>до ${eventDate(event.ends_at)}</span></div><div class="events-card-bottom">${pill}<span class="events-card-link">Подробнее&nbsp; →</span></div></div><div class="events-card-art"><span>${art}</span><i></i><b></b></div></button>`;
+      const visualClass = event.event_type === 'Сессии' ? 'event-visual-session' : event.event_type === 'Учебная практика' ? 'event-visual-study' : 'event-visual-production';
+      if (compact) return `<button type="button" class="past-event-card" data-event-id="${event.id}"><div class="past-event-art ${visualClass}"><span>${art}</span></div><div class="past-event-date">${eventDate(event.starts_at)}</div><div class="past-event-title">${event.title}</div><span>${event.event_type}</span></button>`;
+      return `<button type="button" class="events-page-card" data-event-id="${event.id}"><div class="events-card-date"><strong>${day}</strong><span>${month}</span><small>${dateParts[0] || ''}</small></div><div class="events-card-main"><div class="events-card-top"><span class="events-card-type">${event.event_type}</span><span class="events-card-bookmark">${full ? '🔒' : '◇'}</span></div><h3>${event.title}</h3><p>${event.description || 'Событие для студентов Архива Юристов.'}</p><div class="events-card-meta"><span>◷ В течение дня</span><span>до ${eventDate(event.ends_at)}</span></div><div class="events-card-bottom">${pill}<span class="events-card-link">Подробнее&nbsp; →</span></div></div><div class="events-card-art ${visualClass}"><span>${art}</span><i></i><b></b></div></button>`;
     }
     function renderEventsPage() {
       const container = document.getElementById('screen-content'); if (!container) return;
@@ -796,7 +880,7 @@
       const upcoming = [...studentEvents].filter(event => String(event.ends_at).slice(0, 10) >= today && (eventsScreenFilter === 'Все' || event.event_type === eventsScreenFilter) && (!eventsCalendarDate || (String(event.starts_at).slice(0, 10) <= eventsCalendarDate && String(event.ends_at).slice(0, 10) >= eventsCalendarDate))).sort((a, b) => eventSortMode === 'latest' ? new Date(b.starts_at) - new Date(a.starts_at) : new Date(a.starts_at) - new Date(b.starts_at));
       const past = studentEvents.filter(event => String(event.ends_at).slice(0, 10) < today);
       const filterOptions = ['Все', ...EVENT_TYPES];
-      container.innerHTML = `<div class="events-page glitch-enter"><header class="events-page-header"><button type="button" class="events-brand" id="events-brand-home"><span class="events-brand-mark">⚖</span><span><strong>Архив Юристов</strong><small>закрытый образовательный портал</small></span></button><nav class="events-nav"><button type="button" id="events-home-link">Главная</button><button type="button" class="active">Ивенты</button></nav><div class="events-page-actions"><button type="button" id="events-page-materials" class="events-page-icon" title="Уведомления о материалах"><i data-lucide="bell"></i><span id="events-page-materials-badge" class="page-badge red ${getUnreadNotifications().length ? '' : 'hidden'}">${getUnreadNotifications().length || ''}</span></button><button type="button" id="events-page-notifications" class="events-page-icon" title="Уведомления об ивентах"><i data-lucide="calendar-days"></i><span id="events-page-events-badge" class="page-badge yellow ${getEventNotifications().length ? '' : 'hidden'}">${getEventNotifications().length || ''}</span></button><button type="button" id="events-page-logout" class="events-contact-link">Выйти ↗</button></div></header><main class="events-page-main"><section class="events-hero"><div class="events-hero-copy"><div class="events-overline"><span>// события и возможности</span><span class="events-code">АРХИВ / 2026</span></div><div class="events-script">events</div><h1 class="events-glitch-title" data-text="ИВЕНТЫ">ИВЕНТЫ</h1><p>Временные события, которые помогают двигаться вперёд. Выберите своё.</p><button type="button" class="events-hero-cta" id="events-hero-scroll">Смотреть ближайшие <span>↓</span></button><div class="events-hero-signature">[ <b>АРХИВ ЮРИСТОВ</b> ] <span>ОПЫТ · ЗНАНИЯ · ПРАКТИКА</span></div></div><div class="events-hero-visual"><div class="hero-glitch-grid"></div><div class="hero-scale">⚖</div><div class="hero-noise"></div><div class="hero-vertical-code">ПРАВО<br>ЗНАНИЯ<br>ОПЫТ</div><div class="hero-scan-line"></div></div></section><section class="events-filter-strip"><span class="events-filter-symbol">✣</span>${filterOptions.map(type => `<button type="button" class="events-filter-tab ${eventsScreenFilter === type ? 'active' : ''}" data-page-filter="${type}">${type}</button>`).join('')}<span class="events-filter-spacer"></span><span class="events-filter-sort-label">Показать:</span><select id="events-page-sort" class="events-sort-select"><option value="soonest" ${eventSortMode === 'soonest' ? 'selected' : ''}>Ближайшие</option><option value="latest" ${eventSortMode === 'latest' ? 'selected' : ''}>По дате</option></select></section><section class="events-content-grid"><div class="events-upcoming"><div class="events-section-heading"><h2><span>[</span> Ближайшие события <span>]</span></h2><span>${String(upcoming.length).padStart(2, '0')} / ${String(studentEvents.length).padStart(2, '0')}</span></div><div id="events-page-list">${upcoming.length ? upcoming.map(event => eventsPageCard(event)).join('') : '<div class="events-empty-state"><span>∅</span><strong>Ивентов пока нету.</strong><small>Новые события появятся здесь после публикации.</small></div>'}</div></div><aside class="events-sidebar"><div class="events-side-card events-filter-card"><div class="events-side-heading"><h3>Фильтр</h3><span>✣</span></div><label>Тип события<select id="events-side-type"><option>Все</option>${EVENT_TYPES.map(type => `<option ${eventsScreenFilter === type ? 'selected' : ''}>${type}</option>`).join('')}</select></label><label>Статус<select id="events-side-status"><option>Все ближайшие</option><option>Только с местами</option><option>Только мои записи</option></select></label><button type="button" id="events-reset-filter" class="events-reset">Сбросить <span>×</span></button></div><div class="events-side-card events-quote-card"><span class="events-quote-mark">“</span><p>Право — это не просто правила. Это связь, которой доверяют.</p><small>/ Архив Юристов</small></div><div class="events-side-card events-calendar-card"><div class="events-side-heading"><h3>Календарь</h3><span>◌</span></div>${eventsCalendarMarkup()}</div></aside></section><section class="past-events-section"><div class="events-section-heading"><h2><span>[</span> Прошедшие события <span>]</span></h2><button type="button" class="events-view-all">Смотреть все&nbsp; →</button></div><div class="past-events-grid">${past.length ? past.map(event => eventsPageCard(event, true)).join('') : '<div class="past-empty">Прошедших событий пока нет.</div>'}</div></section><section class="events-subscribe"><div><span class="events-overline">Следите за обновлениями</span><p>Получайте уведомления о новых событиях и свободных местах.</p></div><button type="button" id="events-back-cabinet" class="events-subscribe-button">Вернуться в кабинет&nbsp; →</button></section></main><footer class="events-page-footer"><span>ARCHIVE.LAW<br><small>© 2026. Все права защищены.</small></span><span>ЗНАНИЯ · ПРАКТИКА · СООБЩЕСТВО</span><span>Архив Юристов&nbsp; ◇</span></footer></div>`;
+      container.innerHTML = `<div class="events-page glitch-enter"><header class="events-page-header"><button type="button" class="events-brand" id="events-brand-home"><span class="events-brand-mark">⚖</span><span><strong>Архив Юристов</strong><small>закрытый образовательный портал</small></span></button><nav class="events-nav"><button type="button" id="events-home-link">Главная</button><button type="button" class="active">Ивенты</button></nav><div class="events-page-actions"><button type="button" id="events-page-materials" class="events-page-icon" title="Уведомления о материалах"><i data-lucide="bell"></i><span id="events-page-materials-badge" class="page-badge red ${getUnreadNotifications().length ? '' : 'hidden'}">${getUnreadNotifications().length || ''}</span></button><button type="button" id="events-page-notifications" class="events-page-icon" title="Уведомления об ивентах"><i data-lucide="calendar-days"></i><span id="events-page-events-badge" class="page-badge yellow ${getEventNotifications().length ? '' : 'hidden'}">${getEventNotifications().length || ''}</span></button><button type="button" id="events-page-logout" class="events-contact-link">Выйти ↗</button></div></header><main class="events-page-main"><section class="events-hero"><div class="events-hero-copy"><div class="events-overline"><span>// события и возможности</span><span class="events-code">АРХИВ / 2026</span></div><div class="events-script">events</div><h1 class="events-glitch-title" data-text="ИВЕНТЫ">ИВЕНТЫ</h1><p>Временные события, которые помогают двигаться вперёд. Выберите своё.</p><button type="button" class="events-hero-cta" id="events-hero-scroll">Смотреть ближайшие <span>↓</span></button><div class="events-hero-signature">[ <b>АРХИВ ЮРИСТОВ</b> ] <span>ОПЫТ · ЗНАНИЯ · ПРАКТИКА</span></div></div><div class="events-hero-visual events-hero-visual-image"><div class="hero-glitch-grid"></div><div class="hero-scale">⚖</div><div class="hero-noise"></div><div class="hero-vertical-code">ПРАВО<br>ЗНАНИЯ<br>ОПЫТ</div><div class="hero-scan-line"></div></div></section><section class="events-filter-strip"><span class="events-filter-symbol">✣</span>${filterOptions.map(type => `<button type="button" class="events-filter-tab ${eventsScreenFilter === type ? 'active' : ''}" data-page-filter="${type}">${type}</button>`).join('')}<span class="events-filter-spacer"></span><span class="events-filter-sort-label">Показать:</span><select id="events-page-sort" class="events-sort-select"><option value="soonest" ${eventSortMode === 'soonest' ? 'selected' : ''}>Ближайшие</option><option value="latest" ${eventSortMode === 'latest' ? 'selected' : ''}>По дате</option></select></section><section class="events-content-grid"><div class="events-upcoming"><div class="events-section-heading"><h2><span>[</span> Ближайшие события <span>]</span></h2><span>${String(upcoming.length).padStart(2, '0')} / ${String(studentEvents.length).padStart(2, '0')}</span></div><div id="events-page-list">${upcoming.length ? upcoming.map(event => eventsPageCard(event)).join('') : '<div class="events-empty-state"><span>∅</span><strong>Ивентов пока нету.</strong><small>Новые события появятся здесь после публикации.</small></div>'}</div></div><aside class="events-sidebar"><div class="events-side-card events-filter-card"><div class="events-side-heading"><h3>Фильтр</h3><span>✣</span></div><label>Тип события<select id="events-side-type"><option>Все</option>${EVENT_TYPES.map(type => `<option ${eventsScreenFilter === type ? 'selected' : ''}>${type}</option>`).join('')}</select></label><label>Статус<select id="events-side-status"><option>Все ближайшие</option><option>Только с местами</option><option>Только мои записи</option></select></label><button type="button" id="events-reset-filter" class="events-reset">Сбросить <span>×</span></button></div><div class="events-side-card events-quote-card"><span class="events-quote-mark">“</span><p>Право — это не просто правила. Это связь, которой доверяют.</p><small>/ Архив Юристов</small></div><div class="events-side-card events-calendar-card"><div class="events-side-heading"><h3>Календарь</h3><span>◌</span></div>${eventsCalendarMarkup()}</div></aside></section><section class="past-events-section"><div class="events-section-heading"><h2><span>[</span> Прошедшие события <span>]</span></h2><button type="button" class="events-view-all">Смотреть все&nbsp; →</button></div><div class="past-events-grid">${past.length ? past.map(event => eventsPageCard(event, true)).join('') : '<div class="past-empty">Прошедших событий пока нет.</div>'}</div></section><section class="events-subscribe"><div><span class="events-overline">Следите за обновлениями</span><p>Получайте уведомления о новых событиях и свободных местах.</p></div><button type="button" id="events-back-cabinet" class="events-subscribe-button">Вернуться в кабинет&nbsp; →</button></section></main><footer class="events-page-footer"><span>ARCHIVE.LAW<br><small>© 2026. Все права защищены.</small></span><span>ЗНАНИЯ · ПРАКТИКА · СООБЩЕСТВО</span><span>Архив Юристов&nbsp; ◇</span></footer></div>`;
       if (window.lucide?.createIcons) window.lucide.createIcons();
       updateNotificationsBadge(); updateEventNotificationsBadge();
       ['events-brand-home', 'events-home-link', 'events-back-cabinet'].forEach(id => document.getElementById(id)?.addEventListener('click', closeEventsPage));
