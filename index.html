@@ -179,6 +179,8 @@
     );
     const ADMIN_PASSWORD = 'ЧайныйТунецВ1П';
     let currentScreen = 'auth';
+    let renderRequestId = 0;
+    let screenTransitionTimer = null;
     let currentStudent = null;
     let activeViewerLecture = null;
     let isViewerBlurred = false;
@@ -733,11 +735,13 @@
 
     function openEventsPage() {
       if (currentScreen === 'events') return;
+      clearTimeout(screenTransitionTimer);
       document.body.classList.add('events-transition');
-      setTimeout(async () => {
+      screenTransitionTimer = setTimeout(async () => {
         currentScreen = 'events';
         document.body.classList.add('events-mode');
         await renderApp();
+        if (currentScreen !== 'events') return;
         enableEventsCursor();
         document.body.classList.remove('events-transition');
       }, 420);
@@ -753,11 +757,13 @@
     function disableEventsCursor() { eventsCursorCleanup?.(); }
     function closeEventsPage() {
       disableEventsCursor();
+      clearTimeout(screenTransitionTimer);
       document.body.classList.add('events-transition');
-      setTimeout(async () => {
+      screenTransitionTimer = setTimeout(async () => {
         currentScreen = 'student';
         document.body.classList.remove('events-mode');
         await renderApp();
+        if (currentScreen !== 'student') return;
         document.body.classList.remove('events-transition');
       }, 300);
     }
@@ -906,7 +912,8 @@
     }
 
     async function renderApp() {
-
+      const requestId = ++renderRequestId;
+      const screenAtStart = currentScreen;
       const container = document.getElementById('screen-content');
       container.innerHTML = '';
 
@@ -996,12 +1003,16 @@
           safeQuery(_supabase.from('lectures').select('*').order('created_at', { ascending: false })),
           loadEventsData()
         ]);
+        if (requestId !== renderRequestId || currentScreen !== screenAtStart) return;
         const { data: subjects } = subjectsResult;
         const { data: lectures } = lecturesResult;
         studentLectures = Array.isArray(lectures) ? lectures : [];
         const studentActive = currentStudent?.status !== 'Не активен' && !isKeyExpired(currentStudent?.expires_at);
         const studentStatusLabel = studentActive ? '✓ Подписка активна' : '✕ Подписка неактивна';
         const studentStatusClass = studentActive ? 'text-green-400' : 'text-red-400';
+        const subscriptionEndLabel = currentStudent?.expires_at
+          ? `до ${new Date(`${String(currentStudent.expires_at).slice(0, 10)}T12:00:00`).toLocaleDateString('ru-RU')}`
+          : 'срок не указан';
 
         container.innerHTML = `
           <div class="max-w-[1300px] w-full mx-auto p-6 flex-grow flex flex-col">
@@ -1031,6 +1042,7 @@
                 <div>
                   <div class="text-base font-semibold text-white">${currentStudent?.student_name}</div>
                   <div class="text-xs ${studentStatusClass} mt-0.5">${studentStatusLabel}</div>
+                  <div class="text-[11px] text-gray-400 mt-1">Доступ ${subscriptionEndLabel}</div>
                 </div>
               </div>
               <div><span class="bg-white/5 px-2 py-1 rounded text-sm font-mono border border-white/10">${currentStudent?.key_value}</span></div>
@@ -1138,6 +1150,7 @@
 
       else if (currentScreen === 'events') {
         await loadEventsData();
+        if (requestId !== renderRequestId || currentScreen !== screenAtStart) return;
         renderEventsPage();
         return;
       }
@@ -1148,6 +1161,7 @@
           safeQuery(_supabase.from('lectures').select('*').order('created_at', { ascending: false })),
           loadAdminEventsData()
         ]);
+        if (requestId !== renderRequestId || currentScreen !== screenAtStart) return;
         const { data: keys } = keysResult;
         const { data: subjects } = subjectsResult;
         const { data: adminLectures } = lecturesResult;
