@@ -224,13 +224,15 @@
       opacity: .7;
     }
     .events-card-art.event-visual-session,
-    .past-event-art.event-visual-session { background-image: url('./assets/event-session.webp'); }
+    .past-event-art.event-visual-session { background-image: url('./assets/event-session-clean.webp'); }
     .events-card-art.event-visual-study,
-    .past-event-art.event-visual-study { background-image: url('./assets/event-study-practice.webp'); }
+    .past-event-art.event-visual-study { background-image: url('./assets/event-study-practice-clean.webp'); }
     .events-card-art.event-visual-production,
-    .past-event-art.event-visual-production { background-image: url('./assets/event-production-practice.webp'); }
+    .past-event-art.event-visual-production { background-image: url('./assets/event-production-practice-clean.webp'); }
     .events-card-art > span,
-    .past-event-art > span { position: relative; z-index: 2; color: rgba(213,181,255,.38); text-shadow: 0 0 18px rgba(155,91,255,.72); }
+    .past-event-art > span,
+    .events-card-art > i,
+    .events-card-art > b { display: none; }
     .events-page-card:hover .events-card-art,
     .past-event-card:hover .past-event-art { filter: saturate(1.12) brightness(1.12); }
     .events-page-card:hover .events-card-art::after,
